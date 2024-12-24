@@ -1,0 +1,715 @@
+// * * SSD_VIT * * //
+/* * preparing * */
+var app={
+  data:{
+    sam_import: 'users/zhaotingting/Test_Tookit/AuxiliaryData',
+    vali_index: '0',
+    target_year: '2020',
+    bufferDistance: 5,
+    zoom_size: 15,
+    slide_window: 10,
+    step_year: 2,
+    selectb1:'RED',
+    selectb2:'GREEN',
+    selectb3:'BLUE',
+    chipwidth: 2,
+    description: 'Save_file',
+    folder: 'Visual_interpretion',
+    format_select:'CSV',
+    vali_list: null,
+    rawlayer: null,
+    pointlayer: null,
+    clicklayer: null,
+    property_name1: 'Lab2020',
+    property_name3: 'Conf2020',
+    property_name2: 'ImportProps',
+    primary_label: 10,
+    confidence: 3,
+    Import_props: '',
+    assetsID:'users/zhaotingting/Test_Tookit/Single_YearData'
+  }
+};
+var curveUtils = require('users/zhaotingting/toolkit:Toolkit_JS/ndvi_ndsi_spectrum.js')
+var sg_fitting = require('users/zhaotingting/toolkit:Toolkit_JS/ndvi_ndsi_sg.js')
+var mapObj = ui.Map()
+mapObj.setOptions('SATELLITE')
+var file_format = ["CSV","GeoJSON", "KML", "KMZ","SHP","TFRecord"]
+var Vis_select = ['BLUE','GREEN','RED','NIR','SWIR1','SWIR2']
+var AOI_COLOR = 'ffffff'; 
+
+function applyScaleFactors(image) {// Applies scaling factors LC5-9.
+  var opticalBands = (image.select('SR_B.').multiply(0.0000275).add(-0.2)).multiply(10000)
+  return image.addBands(opticalBands, null, true)
+}
+var Landsat_CloudShadowMask = function(image)
+{
+  var cloudShadowBitMask = 1 << 3;
+  var cloudProbBitMask = 1<<7;
+  var snowBitMask = 1<<4;
+  var cloudsBitMask = 1 << 5;
+  var qa = image.select('pixel_qa');
+  var mask = qa.bitwiseAnd(cloudShadowBitMask).eq(0).and(qa.bitwiseAnd(cloudsBitMask).eq(0))
+              .and(qa.bitwiseAnd(cloudProbBitMask).eq(0)).and(qa.bitwiseAnd(snowBitMask).eq(0))
+  var mask2 = image.reduce(ee.Reducer.min()).gt(0).and(image.reduce(ee.Reducer.max()).lt(10000));
+  var mask3 = image.select('B2').subtract(image.select('B4').multiply(0.5)).lte(1200);
+  return image.updateMask(mask).updateMask(mask2).updateMask(mask3);//
+}
+var L89_bands = ['SR_B2', 'SR_B3', 'SR_B4','SR_B5','SR_B6','SR_B7', 'QA_PIXEL'];
+var L8_bands = ['B2','B3','B4','B5','B6','B7','pixel_qa'];
+var L57_bands = ['SR_B1', 'SR_B2', 'SR_B3','SR_B4','SR_B5','SR_B7', 'QA_PIXEL'];
+var new_bands = ['BLUE','GREEN','RED','NIR','SWIR1','SWIR2','pixel_qa']
+
+var LDTS_Collect = ee.ImageCollection('LANDSAT/LC08/C02/T1_L2').select(L89_bands)
+                 .merge(ee.ImageCollection('LANDSAT/LC09/C02/T1_L2').select(L89_bands))
+                 .merge(ee.ImageCollection('LANDSAT/LE07/C02/T1_L2').select(L57_bands,L89_bands))
+                 .filterDate('2015-01-01','2023-12-31').map(applyScaleFactors)
+                 .select(L89_bands,L8_bands).map(Landsat_CloudShadowMask)
+                 .filterMetadata('CLOUD_COVER','less_than',50)
+                 .select(L8_bands,new_bands)
+var mod_ndvi = ee.ImageCollection('MODIS/MOD09GA_006_NDVI')
+var mod_ndsi = ee.ImageCollection('MODIS/MOD09GA_006_NDSI')
+
+/**
+ * Function to mask clouds using the Sentinel-2 QA band
+ * @ param {ee.Image} image Sentinel-2 image
+ * @ return {ee.Image} cloud masked Sentinel-2 image
+ */
+function maskS2clouds(image) {
+  var qa = image.select('QA60');
+  var cloudBitMask = 1 << 10;// Bits 10 and 11 are clouds and cirrus, respectively.
+  var cirrusBitMask = 1 << 11;
+  var mask = qa.bitwiseAnd(cloudBitMask).eq(0)
+    .and(qa.bitwiseAnd(cirrusBitMask).eq(0)); // Both flags should be set to zero, indicating clear conditions.
+  return image.updateMask(mask).divide(10000);
+}
+
+//* * * Add legend of ESA and DW* * //
+function addLegend(ProNames, palette, names) {
+ //Bottom layer of the legend —— Panel
+ var legend = ui.Panel({
+   style: {
+     position: 'bottom-right',
+     padding: '5px 10px',
+     backgroundColor: 'rgba(255, 255, 255, 0.5)'
+   }
+ });
+ //Legend Title
+ var title = ui.Label({
+   value: ProNames + ' Legend',
+   style: {
+     fontWeight: 'bold',
+     color: "red",
+     fontSize: '10px',
+     backgroundColor: 'rgba(255, 255, 255, 0.0)'
+   }
+ });
+ legend.add(title);
+ //Add legend color and description for each column
+ var addLegendLabel = function(color, name) {
+      var showColor = ui.Label({
+        style: {
+          backgroundColor: '#' + color,
+          padding: '6px',
+          margin: '0 0 4px 0'
+        }
+      });
+      var desc = ui.Label({
+        value: name,
+        style: {
+          fontSize: '10px',
+          backgroundColor: 'rgba(255, 255, 255, 0.0)',
+          margin: '0 0 4px 8px'}
+      });
+     //Colors and instructions are placed horizontally
+      return ui.Panel({
+        widgets: [showColor, desc],
+        layout: ui.Panel.Layout.Flow('horizontal'),
+        style: {backgroundColor: 'rgba(255, 255, 255, 0.0)'}
+      });
+ };
+ //Add all legend lists
+ for (var i = 0; i < palette.length; i++) {
+    var label = addLegendLabel(palette[i], names[i]);
+    legend.add(label);
+ }  
+ return legend
+}
+
+// Import ESA WorldCover
+var className_ESA = ['Tree cover','Cropland','Shrubland','Grassland','Herbaceous wetland','Mangroves','Permanent water bodies',
+      'Moss and lichen','Built-up','Bare / sparse vegetation','Snow and ice']
+var palette_ESA = ['006400','f096ff','ffbb22','ffff4c','0096a0','00cf75','0064c8','fae6a0','fa0000','b4b4b4','f0f0f0']
+var ESA_WC = ee.ImageCollection('ESA/WorldCover/v100').first();
+var ESA_visualization = {bands: ['Map']};
+
+// Import Dynamic World
+var className_DW = ['trees','crops','shrub_and_scrub','grass','flooded_vegetation','water','built','bare','snow_and_ice'];
+var palette_DW = ['006400','f096ff','ffbb22','ffff4c','0096a0','0064c8','fa0000','b4b4b4','f0f0f0'];
+var dynamic_world = ee.ImageCollection('GOOGLE/DYNAMICWORLD/V1').filterDate('2020-01-01','2021-01-01')
+var dynamic_world_major = (dynamic_world.select('label')).reduce(ee.Reducer.mode()).rename('label')
+var dwRgb = dynamic_world_major.select('label').visualize({min: 0, max: 8, palette: palette_DW}).divide(255);
+
+/* * Visualization Parameter Setting and Some Information Display* */
+var vali_featureCollection = ee.FeatureCollection(ee.String(app.data.sam_import));
+var size = vali_featureCollection.size();
+app.data.vali_list = vali_featureCollection.toList(size);
+var right_panel = ui.Panel({
+  layout: ui.Panel.Layout.flow('horizontal', true),
+  style: {width:'40%', backgroundColor: '#d3d3d3'}
+});
+function disp_samImg(){
+  mapObj.clear()
+  right_panel.clear()
+  mapObj.setOptions('SATELLITE')
+  down_right_panel.clear()
+  
+  //import sample data 
+  var number = ee.Number.parse(app.data.vali_index);
+  var feature = ee.Feature(app.data.vali_list.get(number)).geometry();
+  var vali_feature = ee.Feature(app.data.vali_list.get(number));  
+  mapObj.centerObject(feature,app.data.zoom_size);         
+  var final_feature = feature.buffer(app.data.bufferDistance).bounds()
+  
+  /* Display ESA WorldCover and Dynamic World datasets*/
+  var region_clip = feature.buffer(10000).bounds()
+  var ESA_WC_Tile = ESA_WC.clip(region_clip)
+  var dwRgb_Tile = dwRgb.clip(region_clip)
+  mapObj.addLayer(ESA_WC_Tile, ESA_visualization, 'ESA WorldCover');
+  var ESA_legend = addLegend('ESA_WC', palette_ESA, className_ESA)
+  mapObj.add(ESA_legend)
+  mapObj.addLayer(dwRgb_Tile, {}, 'Dynamic World');
+  var DW_legend = addLegend('DW',palette_DW, className_DW)
+  mapObj.add(DW_legend)
+  
+  var prop_name = vali_feature.propertyNames()
+  var old_feature = vali_feature.select(prop_name)
+  var new_feature = old_feature.set(
+      app.data.property_name1,app.data.primary_label,
+      app.data.property_name3,app.data.confidence,
+      app.data.property_name2,app.data.Import_props
+    )
+  app.data.vali_list = app.data.vali_list.replace(old_feature, new_feature)
+  app.data.pointlayer = mapObj.addLayer(final_feature,{},("sample_point" + app.data.vali_index));
+  
+  /*Display image cards to the card panel*/
+  var aoiBox = feature.buffer(app.data.chipwidth * 1000/2)
+  
+  var LDTS_filters = LDTS_Collect.filterBounds(feature)
+                  .filterDate(app.data.target_year + '-01-01', app.data.target_year + '-12-31')
+  var sentinel_dataset = ee.ImageCollection('COPERNICUS/S2_SR_HARMONIZED')
+                  .filterDate(app.data.target_year + '-01-01', app.data.target_year + '-12-31')
+                  .filter(ee.Filter.lt('CLOUDY_PIXEL_PERCENTAGE',20))
+                  .map(maskS2clouds); 
+  displayBrowseImg(LDTS_filters, sentinel_dataset, aoiBox, final_feature)
+}
+var waitMsgImgPanel = ui.Label({
+  value: '⚙️' + ' Processing, please wait.',
+  style: {
+    stretch: 'horizontal',
+    textAlign: 'center',
+    backgroundColor: '#d3d3d3'
+  }
+});
+
+var visualization = {min: 0.0,max: 0.3,bands: ['B4', 'B3', 'B2']}
+function displayBrowseImg(col, sentinel_dataset, aoiBox, aoiCircle){
+  waitMsgImgPanel.style().set('shown', true);
+  right_panel.add(waitMsgImgPanel);
+  waitMsgImgPanel.style().set('shown', false);
+  
+  var RGB_PARAMS = {bands: [app.data.selectb1,app.data.selectb2,app.data.selectb3], min:0.0, max:3000}
+  
+  // Sentinel Display
+  var sentinel_img = sentinel_dataset.mean() //sentinels
+  var aoiImg = ee.Image().byte()
+    .paint(ee.FeatureCollection(ee.Feature(aoiCircle)), 1, 2)
+    .visualize({palette: AOI_COLOR});
+  var sentinel_thumbnail = ui.Thumbnail({
+    image: sentinel_img.visualize(visualization).blend(aoiImg),
+    params: {region: aoiBox, dimensions: '200', crs: 'EPSG:3857', format: 'PNG'}
+  });
+  var Sentinel_Card = ui.Panel([ui.Label('Sentinel-2',
+    {margin: '4px 4px -6px 8px', fontSize: '13px', fontWeight: 'bold'}),
+    sentinel_thumbnail], null, {margin: '4px 0px 0px 4px' , width: 'px'});
+  right_panel.add(Sentinel_Card)
+  
+  // Landsat Display
+  var dates = ee.List.sequence(1, 12, 1);
+  var aoiImg = ee.Image().byte()
+    .paint(ee.FeatureCollection(ee.Feature(aoiCircle)), 1, 2)
+    .visualize({palette: AOI_COLOR});
+  dates.evaluate(function(dates) {
+    dates.forEach(function(date) {
+      var img = col.filter(ee.Filter.calendarRange(date,date,'month')).max();
+      var thumbnail = ui.Thumbnail({
+        image: img.visualize(RGB_PARAMS).blend(aoiImg),
+        params: {region:aoiBox, dimensions:'200', crs:'EPSG:3857', format:'PNG'}
+      });
+      var imgCard = ui.Panel([
+          ui.Label('Month-' + date, {margin:'4px 4px -6px 8px', fontSize:'13px', fontWeight:'bold'}),
+          thumbnail
+        ], null, {margin:'4px 0px 0px 4px' , width:'px'});
+      right_panel.add(imgCard);
+    });
+  });
+}
+
+/* * Auxiliary Information Display * */
+var down_mid_txt = ui.Label({
+  value:"Display Auxiliary Information",
+  style:{stretch: 'horizontal',fontWeight: "bold",color:'gray',
+        fontSize: "12px",padding: '1px',height:'18px'}
+})
+var down_mid_panel = ui.Panel({
+  widgets:[down_mid_txt],
+  style: {
+    height: '30%',
+    width: '30%',
+    position: 'bottom-center',
+    padding: '0px',
+    margin: '0px',
+    border: '0px',
+    stretch: 'both',
+    backgroundColor: 'rgba(255, 255, 255, 0.5)'
+  } 
+});
+function auxi_data_disp(){
+  //import sample data 
+  var number = ee.Number.parse(app.data.vali_index);
+  var feature = ee.Feature(app.data.vali_list.get(number)).geometry();
+  var vali_feature = ee.Feature(app.data.vali_list.get(number));
+  print(vali_feature,'vali_feature')
+  var prop_name = vali_feature.propertyNames().remove('system:index').remove('Rlab2020')
+                  .remove('Rconf20').remove('ImportProps')
+  prop_name = prop_name.sort()
+  var prop_info = vali_feature.toArray(prop_name)
+  prop_info = prop_info.reshape([1,prop_name.length()])
+  var inter1_chart = ui.Chart.array.values(prop_info,1,prop_name).setSeriesNames(['MultiLabs']).setChartType('Table')
+  down_mid_panel.widgets().set(0,inter1_chart)
+}
+  
+/* * import data * */
+var Label_style = {stretch:'horizontal', fontWeight:"bold", fontSize:"12px"}
+var Textbox_style = {stretch:'horizontal', fontWeight:"bold", fontSize:"6px"}
+function data_import(){
+  var import_txt = ui.Label({
+    value:"Initial data imported", style:{stretch:'horizontal', fontWeight:"bold", color:'white',
+          fontSize:"12px", padding:'1px', backgroundColor:'black', height:'18px'}
+  })
+  var vali_file_title = ui.Label({
+    value:"Asset filepath",
+    style: Label_style
+  })
+  var vali_filepathtxt = ui.Textbox({
+    value: app.data.sam_import,
+    onChange: function(value) {app.data.sam_import = value},
+    style: Textbox_style
+  });
+  var target_year_label = ui.Label({
+    value:"Target Year",
+    style: Label_style
+  })
+  var target_yeartxt = ui.Textbox({
+    value: app.data.target_year,
+    onChange: function(value) {app.data.target_year = value},
+    style: Textbox_style
+  });
+  
+  var ZoomScale_label = ui.Label({
+    value:"Zoom Scale",
+    style: Label_style
+  })
+  var ZoomScaletxt = ui.Textbox({
+    value: app.data.zoom_size,
+    onChange: function(value) {app.data.zoom_size = value},
+    style: Textbox_style
+  });
+  
+  var vali_title = ui.Label({
+    value:"Sample ID",
+    style: Label_style
+  });
+  var validationtxt = ui.Textbox({
+    value: app.data.vali_index,
+    onChange: function(value) {app.data.vali_index = value},
+    style: Textbox_style
+  });
+  var BufferDis_label = ui.Label({
+    value:"Buffer Distance of Sample",
+    style: Label_style
+  })
+  var BufferDistxt = ui.Textbox({
+    value: app.data.bufferDistance,
+    onChange: function(value) {app.data.bufferDistance = value},
+    style: Textbox_style
+  });
+  
+  var show_select_txt = ui.Label({
+    value: "Synthetic band",
+    style: Label_style
+  })    
+  var show_selectb1 = ui.Select({
+    items: Vis_select, 
+    value: app.data.selectb1,
+    onChange: function(value) {app.data.selectb1 = value},
+    style: Textbox_style
+  })
+  var show_selectb2 = ui.Select({
+    items: Vis_select, 
+    value: app.data.selectb2,
+    onChange: function(value) {app.data.selectb2 = value},
+    style: Textbox_style
+  })
+  var show_selectb3 = ui.Select({
+    items: Vis_select, 
+    value: app.data.selectb3,
+    onChange: function(value) {app.data.selectb3 = value},
+    style: Textbox_style
+  })
+  // Region buffer.
+  var regionWidthLabel = ui.Label({
+    value: 'Image chip width (km)', style: Label_style
+  });
+  var regionWidthSlider = ui.Slider({
+    min: 0.2, max: 10, value: app.data.chipwidth,
+    onChange: function(value){
+      app.data.chipwidth = value
+    }, step: 0.2, style: Label_style
+  });
+  var dispimg_button = ui.Button({
+    label: "Show sample and images!",
+    onClick: disp_samImg,
+    style: Label_style
+  })
+  var disp_auxiliary_button = ui.Button({
+    label: "Show auxiliary infos!",
+    onClick: auxi_data_disp,
+    style: Label_style
+  })
+  var import_data_panel = ui.Panel({
+    widgets:[import_txt, ui.Panel({
+        widgets:[vali_file_title, vali_filepathtxt], layout:ui.Panel.Layout.flow('horizontal')
+      }), ui.Panel({
+        widgets:[target_year_label, target_yeartxt], layout:ui.Panel.Layout.flow('horizontal')
+      }), ui.Panel({
+        widgets:[BufferDis_label, BufferDistxt], layout:ui.Panel.Layout.flow('horizontal')
+      }), ui.Panel({
+        widgets:[ZoomScale_label, ZoomScaletxt], layout:ui.Panel.Layout.flow('horizontal')
+      }), ui.Panel({
+        widgets:[vali_title, validationtxt], layout:ui.Panel.Layout.flow('horizontal')
+      }), ui.Panel({
+        widgets:[show_select_txt, show_selectb1, show_selectb2, show_selectb3], layout:ui.Panel.Layout.flow('horizontal')
+      }),ui.Panel({
+        widgets:[regionWidthLabel, regionWidthSlider], layout:ui.Panel.Layout.flow('horizontal')
+      }), dispimg_button, disp_auxiliary_button],
+    layout:ui.Panel.Layout.flow('vertical')
+  })
+  return import_data_panel
+}
+
+/* * Add property to dataset * */
+function alter_pro(){
+  //import sample data 
+  var num = ee.Number.parse(app.data.vali_index);
+  var feature = ee.Feature(app.data.vali_list.get(num))
+  var prop_name = feature.propertyNames()
+  var old_feature = ee.Feature(app.data.vali_list.get(num)).select(prop_name)
+  var new_feature = old_feature.set(
+      app.data.property_name1,app.data.primary_label,
+      app.data.property_name3,app.data.confidence,
+      app.data.property_name2,app.data.Import_props
+      )
+  app.data.vali_list = app.data.vali_list.replace(old_feature, new_feature)
+  print(app.data.vali_list)
+}
+
+/* * Export new dataset added property * */
+function exporttodrive(){
+  //import sample data 
+  Export.table.toDrive({
+    collection: ee.FeatureCollection(app.data.vali_list),
+    description: app.data.description,
+    folder: app.data.folder, 
+    fileFormat: app.data.format_select
+  });
+} 
+function exporttoAsset(){
+  //import sample data 
+  Export.table.toAsset({
+    collection: ee.FeatureCollection(app.data.vali_list),
+    description: app.data.description,
+    assetId: app.data.assetsID
+  });
+}
+
+/* * Initialize UI interface * */
+var down_right_txt = ui.Label({
+  value:"Show phenological information",
+  style:{stretch: 'horizontal',fontWeight: "bold",color:'gray',
+        fontSize: "12px",padding: '1px',height:'18px'}
+})
+var down_right_panel = ui.Panel({ 
+  widgets:[down_right_txt],
+  style: {
+    height: '20%',
+    position: 'bottom-center',
+    padding: '0px',
+    margin: '0px',
+    border: '0px',
+    stretch: 'both',
+    backgroundColor: 'rgba(255, 255, 255, 0.5)'
+  } 
+});
+var indice_txt = ui.Label({
+  value:"Show NDVI/NDSI", style:{stretch:'horizontal', fontWeight:"bold", color:'white',
+     fontSize:"12px", padding:'1px', backgroundColor:'black', height:'18px'}
+})
+var step_txt = ui.Label({
+  value:'Select year step',
+  style: Label_style
+})
+var step_year = ui.Slider({
+  min:1, max:10,
+  value:app.data.step_year,
+  step:1,
+  onChange:function(value){
+    app.data.step_year = parseInt(value, 10)
+  },
+  style:Label_style
+})
+/**ndvi curve**/
+var ndvi_txt = ui.Label({
+  value:'Show NDVI/NDSI',
+  style: Label_style
+})
+var dis_ndvi_button = ui.Button({
+  label:'Show',
+  style: Label_style,
+  onClick:function(){
+    var number = ee.Number.parse(app.data.vali_index)
+    var feature = ee.Feature(app.data.vali_list.get(number)).geometry()
+    //Display NDVI curve
+    var actural_ndvi_list = curveUtils.MVC(app.data.target_year,LDTS_Collect,mod_ndvi,mod_ndsi,
+      app.data.slide_window,feature,app.data.step_year,'NDVI')
+    var yValues_ndvi = sg_fitting.ndvi_sg(actural_ndvi_list,feature)
+    var all_values_ndvi = ee.Array.cat([actural_ndvi_list,actural_ndvi_list,yValues_ndvi],1)
+    var range = ee.Number(365)
+    var slidewindow = ee.Number(app.data.slide_window)  
+    var end_index = range.divide(app.data.slide_window).int()
+    var x_axis = ee.List.sequence(0,end_index).map(function(j){
+      j = ee.Number(j)
+      return j.multiply(app.data.slide_window)
+    })
+    var ndvi_chart = ui.Chart.array.values(all_values_ndvi, 0, x_axis)
+          .setSeriesNames(['actural value','line chart', 'Savitzky-Golay fitting']).setOptions(
+    {
+      title: 'Show ' + app.data.target_year + 'NDVI', 
+      hAxis: {title: 'Time'}, vAxis: {title: 'Sample'+app.data.vali_index+' NDVI'},
+      legend: null,
+      series: { 
+        0:{ lineWidth: 0},
+        1: { lineWidth: 2,pointSize: 0},
+        2: { lineWidth: 2, pointSize: 0 }}
+    })
+    down_right_panel.widgets().set(0,ndvi_chart)
+    var actural_ndsi_list = curveUtils.MVC(app.data.target_year,LDTS_Collect,mod_ndvi,mod_ndsi,
+      app.data.slide_window,feature,app.data.step_year,'NDSI')
+    var ndsiValues = sg_fitting.ndvi_sg(actural_ndsi_list,feature)
+    var all_values_ndsi = ee.Array.cat([actural_ndsi_list,actural_ndsi_list,ndsiValues],1)
+    
+    //Display NDSI curve
+    var ndsi_chart = ui.Chart.array.values(all_values_ndsi, 0, x_axis)
+          .setSeriesNames(['actural value','line chart', 'Savitzky-Golay fitting']).setOptions(
+    {
+      title: 'Show ' + app.data.target_year + 'NDSI', 
+      hAxis: {title: 'Time'}, vAxis: {title: 'Sample' + app.data.vali_index + ' NDSI'},
+      legend: null,
+      series: { 
+        0:{ lineWidth: 0},
+        1: { lineWidth: 2,pointSize: 0},
+        2: { lineWidth: 2, pointSize: 0 }}
+    })
+    down_right_panel.widgets().set(1,ndsi_chart)
+  }
+})
+var curvepanel = ui.Panel({
+  widgets:[indice_txt, ui.Panel({
+      widgets:[step_txt,step_year], layout:ui.Panel.Layout.flow('horizontal')
+    }), ui.Panel({
+      widgets:[ndvi_txt,dis_ndvi_button], layout:ui.Panel.Layout.flow('horizontal')
+    })
+  ],
+  layout:ui.Panel.Layout.flow('vertical')
+})
+/**interpret layer**/
+var info_txt = ui.Label({
+  value:'Import interpreted information',
+  style:{stretch: 'horizontal',fontWeight: "bold",color:'white',
+        fontSize: "12px",padding: '1px',backgroundColor:'black',height:'18px'}
+})
+var property_name_txt = ui.Label({
+  value:'Properties:Primary Label/Confidence',
+  style: Label_style
+})
+var property_name1 = ui.Textbox({
+  placeholder: 'Primary_Lab',
+  value: app.data.property_name1,
+  onChange: function(value) {app.data.property_name1 = value},
+  style: Textbox_style
+})
+var property_name3 = ui.Textbox({
+  placeholder: 'Confidence_level',
+  value: app.data.property_name3,
+  onChange: function(value) {app.data.property_name3 = value},
+  style: Textbox_style
+})
+var import_pri = ui.Textbox({
+  placeholder: 'Primary Label',
+  value: app.data.primary_label,
+  onChange: function(value) {app.data.primary_label = value},
+  style: Textbox_style
+})
+var import_conf = ui.Textbox({
+  placeholder: 'Confidence',
+  value: app.data.confidence,
+  onChange: function(value){app.data.confidence = value},
+  style: Textbox_style
+})
+var property_name2 = ui.Textbox({
+  placeholder: 'Wanted Props',
+  value: app.data.property_name2,
+  onChange: function(value) {app.data.property_name2 = value},
+  style: Textbox_style
+})
+var import_WantedProps = ui.Textbox({
+  placeholder: 'Wanted Props',
+  value: app.data.Import_props,
+  onChange: function(value) {app.data.Import_props = value},
+  style: Textbox_style
+})
+var alter_probutton = ui.Button({ 
+  label: "Change Property",
+  style: Label_style,
+  onClick: alter_pro
+});
+/**Save layer**/
+var saveinfo_txt = ui.Label({
+  value:'Save interpreted information',
+  style:{stretch: 'horizontal',fontWeight: "bold",color:'white',
+        fontSize: "12px",padding: '1px',backgroundColor:'black',height:'18px'}
+})
+var name_save_txt = ui.Label({
+  value:'Description/Folder/FileFormat',
+  style: Label_style
+})
+var Description = ui.Textbox({
+  value: app.data.description, 
+  onChange: function(value) {app.data.description = value},
+  style: Textbox_style
+})
+var Folder = ui.Textbox({
+  value: app.data.folder, 
+  onChange: function(value) {app.data.folder = value},
+  style: Textbox_style
+})
+var FileFormat = ui.Select({
+  items: file_format, 
+  value: app.data.format_select, 
+  onChange: function (value) {app.data.format_select = value},
+ style:Textbox_style
+})
+var saveDrive_button = ui.Button({ 
+  label: "Save to Drive",
+  style: Label_style,
+  onClick: exporttodrive
+});
+var name_save_asset = ui.Label({
+  value:'Description/Assets ID',
+  style: Label_style
+})
+var Description_asset = ui.Textbox({
+  value: app.data.description, 
+  onChange: function(value) {app.data.description = value},
+  style: Textbox_style
+})
+var assetsID_asset = ui.Textbox({
+  value: app.data.assetsID, 
+  onChange: function(value) {app.data.assetsID = value},
+  style: Textbox_style
+})
+var saveAssets_button = ui.Button({ 
+  label: "Save to Assets",
+  style: Label_style,
+  onClick: exporttoAsset
+});
+
+var interpanel = ui.Panel({
+  widgets: [info_txt,property_name_txt,ui.Panel({
+      widgets:[property_name1, property_name3, property_name2], layout:ui.Panel.Layout.flow('horizontal')
+    }), ui.Panel({
+      widgets:[import_pri, import_conf, import_WantedProps], layout:ui.Panel.Layout.flow('horizontal')
+    }), alter_probutton, saveinfo_txt, name_save_asset, ui.Panel({
+      widgets:[Description_asset, assetsID_asset], layout:ui.Panel.Layout.flow('horizontal')
+    }),saveAssets_button,name_save_txt, ui.Panel({
+      widgets:[Description, Folder, FileFormat], layout:ui.Panel.Layout.flow('horizontal')
+    }),saveDrive_button
+  ],
+  style: {stretch: 'horizontal'},
+  layout:ui.Panel.Layout.flow('vertical')
+})
+
+/**constuct layer**/
+var import_data_panel = data_import()
+var left_panel = ui.Panel({
+  widgets: [import_data_panel, curvepanel, interpanel],
+  layout: ui.Panel.Layout.flow('vertical'),
+  style: {
+      width: '30%',
+      position: 'top-left',
+      padding: '0px',
+      margin: '0px',
+      border: '0px',
+      stretch: 'both',
+      backgroundColor:'rgba(255, 255, 255, 0.5)'}
+})
+var down_panel = ui.Panel({
+  widgets: [ui.SplitPanel({
+    firstPanel: down_mid_panel,
+    secondPanel: down_right_panel,
+    orientation: 'horizontal'
+  })],
+  style: {height: '30%'}
+})
+var up_downmid_panel = ui.Panel({
+  widgets:[ui.SplitPanel({
+    firstPanel: mapObj,
+    secondPanel: down_panel,
+    orientation: 'vertical'
+  })],
+  style: {height: '75%'}
+})
+var leftmid_panel = ui.Panel({
+  widgets: [ui.SplitPanel({
+    firstPanel: left_panel,
+    secondPanel: up_downmid_panel,
+    orientation: 'horizontal'
+  })],
+  style: {height: '30%', 
+         // width: '30%',
+          position: 'top-left',
+          padding: '0px',
+          margin: '0px',
+          border: '0px',
+          stretch: 'both',
+          backgroundColor:'rgba(255, 255, 255, 0.5)'}
+})
+
+var all_panel = ui.SplitPanel({
+  firstPanel: leftmid_panel,
+  secondPanel: right_panel,
+  orientation: 'horizontal',
+  wipe: false,
+})
+  
+/**insert panel on layer**/
+ui.root.widgets().reset([all_panel])
