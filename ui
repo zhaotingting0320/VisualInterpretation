@@ -1,0 +1,459 @@
+  
+/** ///////////////////////////////////////////////////////////////////
+ * 
+ * Functions to facilitate the creation of user interfaces. Right now
+ * only useful to automate the creation of time series viewers
+ * 
+ ** /////////////////////////////////////////////////////////////////*/
+
+// Global variables 
+var horizontalStyle = {stretch: 'horizontal', width: '100%'}
+var inputUtils = require('users/zhaotingting/toolkit:Toolkit_JS/inputs.js') 
+
+// Set default ccd params
+var BANDS = ['BLUE','GREEN','RED', 'NIR', 'SWIR1', 'SWIR2'] 
+var BPBANDS = ['GREEN', 'RED', 'NIR', 'SWIR1', 'SWIR2']
+var TMBANDS = ['GREEN', 'SWIR2']
+var proj = ee.Projection("EPSG:4326").atScale(30)
+var dateFormat = 1
+var lambda = 20/10000
+var maxIter = 10000
+var defaultCcdParams = {   
+    breakpointBands: BPBANDS,
+    tmaskBands: TMBANDS,
+    dateFormat: dateFormat,
+    lambda: lambda,
+    maxIterations: maxIter
+  }
+
+// Set default ccd params
+var BANDS = ['BLUE','GREEN','RED', 'NIR', 'SWIR1', 'SWIR2'] 
+var BPBANDS = ['GREEN', 'RED', 'NIR', 'SWIR1', 'SWIR2']
+var TMBANDS = ['GREEN', 'SWIR2']
+var proj = ee.Projection("EPSG:4326").atScale(30)
+var dateFormat = 1
+var lambda = 20/10000
+var maxIter = 10000
+var defaultCcdParams = {   
+    breakpointBands: BPBANDS,
+    tmaskBands: TMBANDS,
+    dateFormat: dateFormat,
+    lambda: lambda,
+    maxIterations: maxIter
+  }
+
+/**
+* Load imaged clicked in time series chart
+* @param {ee.Map} mapObj An ee.Map() instance
+* @param {ee.Geometry} geometry ee.Geometry of the location used to filter the TS collection
+* @param {String} date Date in any format accepted by ee.Date()
+*/
+var getImageRegion = function(mapObj, geometry, date, vizParams) {
+  var imDate = ee.Date(date)
+  var befDate = imDate.advance(-1, 'day')
+  var aftDate = imDate.advance(1, 'day')
+  var landsatCol = runParams['landsatCol'] || 2
+  var col = inputUtils.generateCollection(geometry, befDate, aftDate,landsatCol).select(BANDS)
+  var selectedImage =  inputUtils.doIndices(col).first()
+
+  selectedImage.get('system:index').evaluate(function(obj) {
+    var bandList = [vizParams['red'], vizParams['green'], vizParams['blue']]
+    var minList = [vizParams['redMin'], vizParams['greenMin'], vizParams['blueMin']]
+    var maxList = [vizParams['redMax'], vizParams['greenMax'], vizParams['blueMax']]
+    // Get current number of layers to add images just below the outline of the clicked pixel, which
+    // should be always on top, but on top of other existing images
+    var numLayers = mapObj.layers().length()
+    var insertIndex = numLayers - 1
+    // Use insert to preserve clicked box on top and shift any other existing bands
+    mapObj.layers().insert(insertIndex, ui.Map.Layer(ee.Image(selectedImage), {bands: bandList, min: minList, max: maxList}, obj))
+  })
+}
+
+/**
+* Get Landsat pixel bounds in a given projection
+* @param {ee.Geometry.Point} point A point geometry
+* @param {ee.Projection or EPSG code} projection Projection to use for retrieving the pixel bounds
+* @returns {ee.Geometry} Bounds of the intersecting pixel in the specified projection
+*/
+function getBounds(point, projection){
+  var toProj = ee.Projection(projection).atScale(30)
+  var c1 = point.transform(toProj, 1).coordinates()
+    .map(function(p) {
+      return ee.Number(p).floor()
+    })
+  var c2 = c1.map(function(p) { return ee.Number(p).add(1) })
+  var p2 =  ee.Geometry.LineString([c1, c2], toProj)
+  return p2.bounds()
+}
+
+/**
+* Format time series to make them suitable for the charting, and smooth segments if selected
+* @param {ee.ImageCollection} collection ee.ImageCollection with the images used in CCD
+* @param {Number} dateFormat Date format as accepted by the CCD algorithm
+* @param {ee.Image} ccdc CCD results
+* @param {ee.Geometry} geometry ee.Geometry used to retrieve the time series
+* @param {String} band Band to chart
+* @param {Number} padding Padding factor to smooth the temporal segments
+* @returns {ee.ImageCollection} ee.ImageCollection suitable for charting
+*/
+function ccdcTimeseries(collection, dateFormat, ccdc, geometry, band, padding) {
+  function harmonicFit(t, coef) {
+    var PI2 = 2.0 * Math.PI
+    var OMEGAS = [PI2 / 365.25, PI2, PI2 / (1000 * 60 * 60 * 24 * 365.25)]
+    var omega = OMEGAS[dateFormat];
+    return coef.get([0])
+      .add(coef.get([1]).multiply(t))
+      .add(coef.get([2]).multiply(t.multiply(omega).cos()))
+      .add(coef.get([3]).multiply(t.multiply(omega).sin()))
+      .add(coef.get([4]).multiply(t.multiply(omega * 2).cos()))
+      .add(coef.get([5]).multiply(t.multiply(omega * 2).sin()))
+      .add(coef.get([6]).multiply(t.multiply(omega * 3).cos()))
+      .add(coef.get([7]).multiply(t.multiply(omega * 3).sin()));
+  };
+
+  function convertDateFormat(date, format) {
+    if (format == 0) { 
+      var epoch = 719529;
+      var days = date.difference(ee.Date('1970-01-01'), 'day')
+      return days.add(epoch)
+    } else if (format == 1) {
+      var year = date.get('year')
+      var fYear = date.difference(ee.Date.fromYMD(year, 1, 1), 'year')
+      return year.add(fYear)
+    } else {
+      return date.millis()
+    }
+  }
+
+  function date_to_segment(t, fit) {
+    var tStart = ee.Array(fit.get('tStart'));
+    var tEnd = ee.Array(fit.get('tEnd'));
+    return tStart.lte(t).and(tEnd.gte(t)).toList().indexOf(1);
+  };
+
+  function produceTimeSeries(collection, ccdc, geometry, band) {
+
+    var ccdcFits = ccdc.reduceRegion({
+      reducer: ee.Reducer.first(), 
+      geometry: geometry, 
+      crs: proj
+    })
+    
+    
+    if (padding) {
+      collection = collection.sort('system:time_start')
+
+      var first = collection.first()
+      var last = collection.sort('system:time_start', false).first()
+      var fakeDates = ee.List.sequence(first.date().get('year'), last.date().get('year'), padding).map(function(t) {
+        var fYear = ee.Number(t);
+        var year = fYear.floor()
+        return  ee.Date.fromYMD(year, 1, 1).advance(fYear.subtract(year), 'year')
+      })
+      fakeDates = fakeDates.map(function(d) { 
+        return ee.Image().rename(band).set('system:time_start', ee.Date(d).millis())
+      })
+      collection = collection.merge(fakeDates)
+    }    
+    
+    collection = collection.sort('system:time_start')
+
+    /** Augment images with the model fit. */
+    var timeSeries = collection.map(function(img) {
+      var time = convertDateFormat(img.date(), dateFormat)
+      var segment = date_to_segment(time, ccdcFits)
+      var value = img.select(band).reduceRegion({
+        reducer: ee.Reducer.first(), 
+        geometry: geometry,
+        crs: proj
+      }).getNumber(band)
+      
+      var coef = ee.Algorithms.If(segment.add(1), 
+        ccdcFits.getArray(band + '_coefs')
+          .slice(0, segment, segment.add(1))
+          .project([1]),
+        ee.Array([0,0,0,0,0,0,0,0,0]))
+      
+      var fit = harmonicFit(time, ee.Array(coef))
+      return img.set({
+        value: value,
+        fitTime: time,
+        fit: fit,
+        coef: coef,
+        segment: segment,
+        dateString: img.date().format("YYYY-MM-dd")
+      }).set(segment.format("h%d"), fit)
+    })
+    return timeSeries
+  }
+  
+  return produceTimeSeries(collection, ccdc, geometry, band)
+  
+}
+  
+/**
+* Generate chart of time series and CCD temporal segments
+* TODO: doctstring
+* @returns {{
+*/
+function chartTimeseries(table, band, lat, lon, nSegs) {
+  nSegs = nSegs || 6
+  
+  // Get alphabet letter using index
+  function getLetter(x){
+    var alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
+    var charCode = alphabet.charCodeAt(x)
+    return String.fromCharCode(charCode)
+  }
+  
+  // Build dictionary required to create custom segment chart 
+  function buildDict(letter, index){
+    var fitName = 'fit '.concat(index.toString())
+    return {id: letter, label: fitName, type: 'number'}
+  }
+  
+  // Everything in here is client-side javascript.
+  function formatAsDataTable(table) {
+    
+    // Generate dictionaries for n segments and append to list
+    var cols = [{id: 'A', label: 'Date', type: 'date'},
+            {id: 'B', label: 'Observation', type: 'number'}]
+    for (var i = 1; i < nSegs+1; i++) {
+      var dict = buildDict(getLetter(i+1), i)
+      cols.push(dict)
+    }
+    
+    var values = table.map(function(list) {
+      return {c: list.map(function(item, index) {
+          return {"v": index == 0 ? new Date(item) : item }
+        })
+      }
+    })
+    return {cols: cols, rows: values}
+  }
+
+  /** Compute the limits of the given column */
+  function getLimits(table, column) {
+    var col = table.map(function(l) { return l[column]; }).filter(function(i) { return i != null })
+    return [Math.min.apply(Math, col), Math.max.apply(Math, col)]
+  }
+
+  var limits = getLimits(table, 8)
+  var formatted = formatAsDataTable(table)
+  return ui.Chart(formatted, 'LineChart', {
+      title: 'CCDC TS, Latitude, Longitude: ' + lat.toFixed(4) + ', ' + lon.toFixed(4),
+      pointSize: 0,
+      series: {
+        0: { pointSize: 1.8, lineWidth: 0},
+      },
+      vAxis: {
+        title: 'Surface reflectance (' + band + ')',
+        viewWindowMode: 'explicit', //'pretty', 
+        viewWindow: {
+          min: limits[0] * 0.9,
+          max: limits[1] * 1.1
+        }
+      },
+      height: '90%', //If 100%, chart starts growing if split panel is resized
+      stretch: 'both'
+  })
+}
+
+
+var defaultRunParams = {sDate: '2000-01-01', eDate:'2020-01-01', nSegs: 6}
+var defaultVizParams = {red: 'SWIR1', green: 'NIR', blue: 'RED', 
+                        redMin: 0, redMax: 0.6, 
+                        greenMin: 0, greenMax: 0.6, 
+                        blueMin: 0, blueMax: 0.6}
+
+// TODO: doctstring
+function chartCcdc(ccdParams, runParams, vizParams, 
+                    geometry, panel, latitude, longitude, mapObj,clicklayer){
+  
+  ccdParams = ccdParams || defaultCcdParams
+  runParams = runParams || defaultRunParams
+  vizParams = vizParams || defaultVizParams
+  
+  // Set up and run CCDC
+  // Need to filter bands because indices code does not currently work if TEMP is included
+  var collection = inputUtils.generateCollection(geometry, runParams['sDate'], runParams['eDate'],2).select(BANDS)
+  ccdParams['collection'] =  inputUtils.doIndices(collection)
+  var ccdc_tile = ee.Algorithms.TemporalSegmentation.Ccdc(ccdParams)
+  
+  // mapObj.addLayer(ccdc_tile, {}, "ccdc", false)
+
+  var series = ccdcTimeseries(ccdParams['collection'], ccdParams['dateFormat'], ccdc_tile, geometry, runParams['bandSelect'], 0.1)
+
+  // Snap click box to image
+  var ref_image =ee.Image(ccdParams['collection'].first()) 
+  var proj = ref_image.projection().atScale(30)
+  
+  var c1 = geometry.transform(proj, 1).coordinates()
+    .map(function(p) {
+      return ee.Number(p).floor()
+    })
+  var c2 = c1.map(function(p) { return ee.Number(p).add(1) })
+  var p2 =  ee.Geometry.LineString([c1, c2], proj)
+  if (clicklayer !== null){
+    mapObj.remove(clicklayer);
+  }
+  clicklayer=null;
+  clicklayer = mapObj.addLayer(p2.bounds(), {}, 'clicked')
+  
+  // mapObj.addLayer(series, {}, "series", false)
+
+  // Get required list programatically for n segments
+  var templist = ["dateString", "value" ]
+  for (var i = 0; i < runParams['nSegs']; i++) {
+    templist.push("h".concat(i.toString()))
+  }
+  templist.push("fit")
+  var listLength = templist.length
+  
+  var table = series.reduceColumns(ee.Reducer.toList(listLength, listLength), templist)
+                    .get('list')
+
+  // Use evaluate so we don't lock up the browser.
+  table.evaluate(function(t, e) {
+    var chart = chartTimeseries(t, runParams['bandSelect'], latitude, longitude, runParams['nSegs'])
+    // panel.widgets().reset([chart])
+    // This is the original code working
+    panel.widgets().set(0, chart) 
+    // This is the new code for testing that simplifies integration with landtrendr, but breaks resizing figure
+    // panel.add(chart) 
+    chart.onClick(function(x) {
+      if (x) {
+        // getImageRegion(mapObj, geometry, x)
+        getImageRegion(mapObj, geometry, x, vizParams)
+      }
+    })
+  })
+}  
+
+function chartDOY(runParams, mapObj, geometry, panel, lat, lon,clicklayer){
+  
+  runParams = runParams || defaultRunParams
+  
+  var col = inputUtils.getLandsat(runParams['sDate'], runParams['eDate'], 1, 366, geometry)
+  var ref_image =ee.Image(col.first()) 
+  var bounds = getBounds(geometry, ref_image.projection())
+  // High number 'ensures' this layer is added on top unless there's that many layers loaded already
+  if (clicklayer !== null){
+    mapObj.remove(clicklayer);
+  }
+  clicklayer=null;
+  clicklayer = mapObj.layers().insert(20, ui.Map.Layer(bounds, {}, 'clicked'))
+  
+  
+  var chart = ui.Chart.image.doySeries({
+    imageCollection: col.select([runParams['bandSelect']]), 
+    region: geometry, 
+    scale: 30,
+    regionReducer: ee.Reducer.first()
+    })
+    .setChartType("ScatterChart")
+    .setOptions({
+      title: 'DOY Plot, Latitude, Longitude: ' + lat.toFixed(4) + ', ' + lon.toFixed(4),
+      lineWidth:0,
+      pointSize: 0,
+      series: {
+        0: {lineWidth:0, pointSize: 2},
+      },
+      vAxis: {
+        title: 'Surface reflectance (' + runParams['bandSelect'] + ')',
+      },
+      hAxis: {
+        title: "Day of year",
+        viewWindowMode: 'explicit', 
+        viewWindow: {
+          min: 0,
+          max: 366
+        }
+      },
+      height: '90%', //If 100%, chart starts growing if split panel is resized
+      stretch: 'both',
+      explorer: {} ,
+    })
+
+  panel.widgets().set(0, chart) 
+  
+}
+
+
+/**
+* Create standalone chart with time series and CCDC segments
+* @param {ee.Map} mapObj An ee.Map() instance
+* @param {dict} runParams Dictionary with arguments to filter collection
+* @param {dict} ccdParams Dictionary with argument to pass to the CCD algorithm
+* @returns {ee.Chart} ee.Chart linked to the input map
+*/
+function getTSChart(mapObj, ccdParams, runParams, vizParams) {
+  ccdParams = ccdParams || defaultCcdParams
+  runParams = runParams || defaultRunParams
+  vizParams = vizParams || defaultVizParams
+  
+  var waitMsg = ui.Label({
+    value: 'Processing, please wait',
+    style: {
+      position: 'bottom-left',
+      stretch: 'horizontal',
+      textAlign: 'center',
+      fontWeight: 'bold',
+      backgroundColor: 'rgba(255, 255, 255, 0.0)'
+    }
+  });
+  
+  var chartPanel = ui.Panel({
+  style: {
+    height: '30%',
+    width: '100%',
+    position: 'bottom-center',
+    padding: '0px',
+    margin: '0px',
+    border: '0px',
+    // whiteSpace:'nowrap',
+    stretch: 'both',
+    backgroundColor: 'rgba(255, 255, 255, 0.5)'
+    } 
+  });
+  
+  // Map callback function, set the first time and after map is cleared
+  var mapCallback = function(coords) {
+    if(dirtyMap === false){
+      //mapObj.widgets().set(1, chartPanel)
+      dirtyMap = true;
+    }
+    chartPanel.clear();
+    chartPanel.add(waitMsg);
+    
+    var geometry = ee.Geometry.Point([coords.lon, coords.lat]);
+    // Retrieve time series of DOY plot
+    if (vizParams.tsType == "Time series"){
+      chartCcdc(ccdParams, runParams, vizParams, geometry, chartPanel, 
+              coords.lat, coords.lon, mapObj)
+    
+    } else if (vizParams.tsType == "DOY") {
+      chartDOY(runParams, mapObj, geometry, chartPanel,
+                coords.lat, coords.lon)
+    }
+  }
+
+  // Set initial map options and link map and chart
+  var dirtyMap = false
+  mapObj.onClick(mapCallback) 
+  
+  return chartPanel
+  
+}
+exports = {
+  getImageRegion: getImageRegion,
+  getBounds: getBounds,
+  chartCcdc: chartCcdc,
+  getTSChart: getTSChart,
+  chartDOY: chartDOY
+}
+
+
+
+
+
