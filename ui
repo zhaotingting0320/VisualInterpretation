@@ -52,8 +52,7 @@ var getImageRegion = function(mapObj, geometry, date, vizParams) {
   var imDate = ee.Date(date)
   var befDate = imDate.advance(-1, 'day')
   var aftDate = imDate.advance(1, 'day')
-  var landsatCol = runParams['landsatCol'] || 2
-  var col = inputUtils.generateCollection(geometry, befDate, aftDate,landsatCol).select(BANDS)
+  var col = inputUtils.generateCollection(geometry, befDate, aftDate,2).select(BANDS)
   var selectedImage =  inputUtils.doIndices(col).first()
 
   selectedImage.get('system:index').evaluate(function(obj) {
