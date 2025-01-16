@@ -51,7 +51,7 @@ function modlist_indice(mod_ndvi,mod_ndsi,index,slidewindow,point,str_indice){
 * return array
 **/
 exports. MVC = function (year_num,img_ldt,mod_ndvi,mod_ndsi,slideWindow,point,step,str_indice){
-  year_num = ee.Number(parseInt(value, 10))
+  year_num = ee.Number(parseInt(year_num, 10))
   var range=ee.Number(365)
   var slidewindow=ee.Number(slideWindow)  
   var end_index = range.divide(slidewindow).int()
