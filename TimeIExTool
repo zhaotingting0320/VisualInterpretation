@@ -78,8 +78,15 @@ var Collect_Conftxt = ui.Textbox({
   onChange: function(value) {app.data.Collect_ConfName = value},
   style: Textbox_style
 });
-
-
+var Collect_ID_title = ui.Label({
+  value:"Sample ID collected for a single year",
+  style: Label_style
+})
+var Collect_IDtxt = ui.Textbox({
+  value: app.data.Collect_ID,
+  onChange: function(value) {app.data.Collect_ID = value},
+  style: Textbox_style
+});
 
 var start_year_label = ui.Label({value:"Start Year",style: Label_style})
 var start_yeartxt = ui.Textbox({value: app.data.start_year,onChange: function(value) {app.data.start_year = value},style: Textbox_style});
@@ -111,7 +118,6 @@ var TSAuxiExButton = ui.Button({
             app.data.start_year,app.data.end_year,app.data.SetTileScale)
     
     var fc = ee.FeatureCollection(new_col)
-    print(fc,'fc')
     var feature = fc.first().geometry()
     mapObj.centerObject(feature,10);   
     mapObj.addLayer(fc,{},"Samples")
@@ -128,6 +134,7 @@ var left_panel = ui.Panel({
   widgets:[import_txt,ToolInstructions, tool_manual, ui.Panel({widgets:[vali_file_title,vali_filepathtxt], layout:ui.Panel.Layout.flow('horizontal')}),
     ui.Panel({widgets:[Collect_LabProp_title,Collect_LabProptxt], layout:ui.Panel.Layout.flow('horizontal')}),
     ui.Panel({widgets:[Collect_Conf_title,Collect_Conftxt], layout:ui.Panel.Layout.flow('horizontal')}),
+    ui.Panel({widgets:[Collect_ID_title,Collect_IDtxt], layout:ui.Panel.Layout.flow('horizontal')}),
     ui.Panel({widgets:[start_year_label,start_yeartxt], layout:ui.Panel.Layout.flow('horizontal')}),
     ui.Panel({widgets:[end_year_label,end_yeartxt], layout:ui.Panel.Layout.flow('horizontal')}),
     ui.Panel({widgets:[DownloadLabel,Description], layout:ui.Panel.Layout.flow('horizontal')}),
