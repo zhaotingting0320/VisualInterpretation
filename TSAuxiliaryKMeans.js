@@ -131,9 +131,9 @@ exports.TSinfos_extrct = function(samples,Collect_LabPropName,Collect_ConfName,I
   var new_samples = mergedFC.map(function(feature) {
     var updatedFeature = years.iterate(function(iyear, feat) {
       feat = ee.Feature(feat);
-      var props1 = ee.String('NewLab').cat(ee.Number(iyear).format());
-      var props2 = ee.String('Conf').cat(ee.Number(iyear).format());
-      var cluster_lab = feat.get(ee.String('ClusterLab').cat(ee.Number(iyear).format()));
+      var props1 = ee.String('NewLab').cat(ee.String(ee.Number(iyear).int()))
+      var props2 = ee.String('Conf').cat(ee.String(ee.Number(iyear).int()))
+      var cluster_lab = feat.get(ee.String('ClusterLab').cat(ee.String(ee.Number(iyear).int())))
       var conf_lab = feat.get(Collect_ConfName);
       return feat.set(props1, cluster_lab).set(props2, conf_lab);
     }, feature);
