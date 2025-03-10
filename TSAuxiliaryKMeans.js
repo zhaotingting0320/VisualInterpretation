@@ -74,7 +74,6 @@ exports.TSinfos_extrct = function(samples,Collect_LabPropName,Collect_ConfName,I
   var KMeansFC = samples_list.iterate(function(current, previous) {
     return joinCollections(ee.FeatureCollection(previous), ee.FeatureCollection(current),ID_name);
   },fc1);
-  print('KMeansFC',KMeansFC)
   
   /* * * Auxiliary data * * */
   // * * FVC * * //
@@ -94,7 +93,6 @@ exports.TSinfos_extrct = function(samples,Collect_LabPropName,Collect_ConfName,I
   var FVC_FC = FVC_Annual_list.iterate(function(current, previous) {
     return joinCollections(ee.FeatureCollection(previous), ee.FeatureCollection(current),ID_name);
   },FVC_fc1);
-  print('FVC_FC',FVC_FC)
   
   // * * DEM * * //
   var dem_dataset = ee.Image('USGS/SRTMGL1_003')
@@ -118,16 +116,31 @@ exports.TSinfos_extrct = function(samples,Collect_LabPropName,Collect_ConfName,I
   print(mergedFC,'mergedFC')
   
   // * * NewLab and NewConf * * //
-  var new_samples = mergedFC.map(function(feature){
-    for(var iyear = start_year; iyear <= end_year; iyear++){
-      var props1 = 'NewLab' + String(iyear)
-      var props2 = 'Conf' + String(iyear)
-      var cluster_lab = feature.get('ClusterLab' + String(iyear))
-      var conf_lab = feature.get(Collect_ConfName)
-      feature = feature.set(props1, cluster_lab, props2, conf_lab)
-    }
-    return feature
-  })
+  // var new_samples = mergedFC.map(function(feature){
+  //   for(var iyear = start_year; iyear <= end_year; iyear++){
+  //     var props1 = 'NewLab' + String(iyear)
+  //     var props2 = 'Conf' + String(iyear)
+  //     var cluster_lab = feature.get('ClusterLab' + String(iyear))
+  //     var conf_lab = feature.get(Collect_ConfName)
+  //     feature = feature.set(props1, cluster_lab, props2, conf_lab)
+  //   }
+  //   return feature
+  // })
+  
+  var years = ee.List.sequence(start_year, end_year);
+  var new_samples = mergedFC.map(function(feature) {
+    var updatedFeature = years.iterate(function(iyear, feat) {
+      feat = ee.Feature(feat);
+      var props1 = ee.String('NewLab').cat(ee.Number(iyear).format());
+      var props2 = ee.String('Conf').cat(ee.Number(iyear).format());
+      var cluster_lab = feat.get(ee.String('ClusterLab').cat(ee.Number(iyear).format()));
+      var conf_lab = feat.get(Collect_ConfName);
+      return feat.set(props1, cluster_lab).set(props2, conf_lab);
+    }, feature);
+  
+    return ee.Feature(updatedFeature);
+  });
+  
   return new_samples
   print('ALL',new_samples)
 }
