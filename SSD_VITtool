@@ -7,26 +7,28 @@ var app={
     target_year: '2020',
     bufferDistance: 5,
     zoom_size: 15,
-    slide_window: 10,
-    step_year: 2,
     selectb1:'RED',
     selectb2:'GREEN',
     selectb3:'BLUE',
     chipwidth: 2,
-    description: 'Save_file',
-    folder: 'Visual_interpretion',
+    
+    slide_window: 10,
+    step_year: 2,
+    
+    property_name1: 'Lab2020',
+    property_name3: 'Conf2020',
+    property_name2: 'ImportProps',
+    primary_label: 0,
+    confidence: 0,
+    Import_props: 0,
+    
+    description: 'Single_YearData',
     format_select:'CSV',
+    
     vali_list: null,
     rawlayer: null,
     pointlayer: null,
     clicklayer: null,
-    property_name1: 'Lab2020',
-    property_name3: 'Conf2020',
-    property_name2: 'ImportProps',
-    primary_label: 10,
-    confidence: 3,
-    Import_props: '',
-    assetsID:'users/zhaotingting/Test_Tookit/Single_YearData'
   }
 };
 var curveUtils = require('users/zhaotingting/toolkit:Toolkit_JS/ndvi_ndsi_spectrum.js')
@@ -41,19 +43,19 @@ function applyScaleFactors(image) {// Applies scaling factors LC5-9.
   var opticalBands = (image.select('SR_B.').multiply(0.0000275).add(-0.2)).multiply(10000)
   return image.addBands(opticalBands, null, true)
 }
-var Landsat_CloudShadowMask = function(image)
-{
-  var cloudShadowBitMask = 1 << 3;
-  var cloudProbBitMask = 1<<7;
-  var snowBitMask = 1<<4;
-  var cloudsBitMask = 1 << 5;
-  var qa = image.select('pixel_qa');
-  var mask = qa.bitwiseAnd(cloudShadowBitMask).eq(0).and(qa.bitwiseAnd(cloudsBitMask).eq(0))
-              .and(qa.bitwiseAnd(cloudProbBitMask).eq(0)).and(qa.bitwiseAnd(snowBitMask).eq(0))
-  var mask2 = image.reduce(ee.Reducer.min()).gt(0).and(image.reduce(ee.Reducer.max()).lt(10000));
-  var mask3 = image.select('B2').subtract(image.select('B4').multiply(0.5)).lte(1200);
-  return image.updateMask(mask).updateMask(mask2).updateMask(mask3);//
-}
+// var Landsat_CloudShadowMask = function(image)
+// {
+//   var cloudShadowBitMask = 1 << 3;
+//   var cloudProbBitMask = 1<<7;
+//   var snowBitMask = 1<<4;
+//   var cloudsBitMask = 1 << 5;
+//   var qa = image.select('pixel_qa');
+//   var mask = qa.bitwiseAnd(cloudShadowBitMask).eq(0).and(qa.bitwiseAnd(cloudsBitMask).eq(0))
+//               .and(qa.bitwiseAnd(cloudProbBitMask).eq(0)).and(qa.bitwiseAnd(snowBitMask).eq(0))
+//   var mask2 = image.reduce(ee.Reducer.min()).gt(0).and(image.reduce(ee.Reducer.max()).lt(10000));
+//   var mask3 = image.select('B2').subtract(image.select('B4').multiply(0.5)).lte(1200);
+//   return image.updateMask(mask).updateMask(mask2).updateMask(mask3);//
+// }
 var L89_bands = ['SR_B2', 'SR_B3', 'SR_B4','SR_B5','SR_B6','SR_B7', 'QA_PIXEL'];
 var L8_bands = ['B2','B3','B4','B5','B6','B7','pixel_qa'];
 var L57_bands = ['SR_B1', 'SR_B2', 'SR_B3','SR_B4','SR_B5','SR_B7', 'QA_PIXEL'];
@@ -63,10 +65,8 @@ var LDTS_Collect = ee.ImageCollection('LANDSAT/LC08/C02/T1_L2').select(L89_bands
                  .merge(ee.ImageCollection('LANDSAT/LC09/C02/T1_L2').select(L89_bands))
                  .merge(ee.ImageCollection('LANDSAT/LE07/C02/T1_L2').select(L57_bands,L89_bands))
                  .merge(ee.ImageCollection('LANDSAT/LT05/C02/T1_L2').select(L57_bands,L89_bands))
-                 .filterDate('1985-01-01','2023-12-31').map(applyScaleFactors)
-                 .select(L89_bands,L8_bands).map(Landsat_CloudShadowMask)
-                 .filterMetadata('CLOUD_COVER','less_than',80)
-                 .select(L8_bands,new_bands)
+                 .filterDate('1985-01-01','2023-12-31').filterMetadata('CLOUD_COVER','less_than',30)
+                 .map(applyScaleFactors).select(L89_bands,L8_bands).select(L8_bands,new_bands)
 var mod_ndvi = ee.ImageCollection('MODIS/MOD09GA_006_NDVI')
 var mod_ndsi = ee.ImageCollection('MODIS/MOD09GA_006_NDSI')
 
@@ -146,19 +146,23 @@ var ESA_visualization = {bands: ['Map']};
 // Import Dynamic World
 var className_DW = ['trees','crops','shrub_and_scrub','grass','flooded_vegetation','water','built','bare','snow_and_ice'];
 var palette_DW = ['006400','f096ff','ffbb22','ffff4c','0096a0','0064c8','fa0000','b4b4b4','f0f0f0'];
-var dynamic_world = ee.ImageCollection('GOOGLE/DYNAMICWORLD/V1').filterDate('2020-01-01','2021-01-01')
+var dynamic_world = ee.ImageCollection('GOOGLE/DYNAMICWORLD/V1').filterDate(target_year+'-01-01',target_year+'12-31')
 var dynamic_world_major = (dynamic_world.select('label')).reduce(ee.Reducer.mode()).rename('label')
 var dwRgb = dynamic_world_major.select('label').visualize({min: 0, max: 8, palette: palette_DW}).divide(255);
 
-/* * Visualization Parameter Setting and Some Information Display* */
 var vali_featureCollection = ee.FeatureCollection(ee.String(app.data.sam_import));
 var size = vali_featureCollection.size();
 app.data.vali_list = vali_featureCollection.toList(size);
+
+/* * Visualization Parameter Setting and Some Information Display* */
 var right_panel = ui.Panel({
   layout: ui.Panel.Layout.flow('horizontal', true),
   style: {width:'40%', backgroundColor: '#d3d3d3'}
 });
 function disp_samImg(){
+  var vali_featureCollection = ee.FeatureCollection(ee.String(app.data.sam_import));
+  var size = vali_featureCollection.size();
+  app.data.vali_list = vali_featureCollection.toList(size);
   mapObj.clear()
   right_panel.clear()
   mapObj.setOptions('SATELLITE')
@@ -178,7 +182,7 @@ function disp_samImg(){
   mapObj.addLayer(ESA_WC_Tile, ESA_visualization, 'ESA WorldCover');
   var ESA_legend = addLegend('ESA_WC', palette_ESA, className_ESA)
   mapObj.add(ESA_legend)
-  mapObj.addLayer(dwRgb_Tile, {}, 'Dynamic World');
+  mapObj.addLayer(dwRgb_Tile, {}, 'Dynamic World'+target_year);
   var DW_legend = addLegend('DW',palette_DW, className_DW)
   mapObj.add(DW_legend)
   
@@ -190,7 +194,7 @@ function disp_samImg(){
       app.data.property_name2,app.data.Import_props
     )
   app.data.vali_list = app.data.vali_list.replace(old_feature, new_feature)
-  app.data.pointlayer = mapObj.addLayer(final_feature,{},("sample_point" + app.data.vali_index));
+  mapObj.addLayer(final_feature,{},("sample_point" + app.data.vali_index));
   
   /*Display image cards to the card panel*/
   var aoiBox = feature.buffer(app.data.chipwidth * 1000/2)
@@ -199,25 +203,13 @@ function disp_samImg(){
                   .filterDate(app.data.target_year + '-01-01', app.data.target_year + '-12-31')
   var sentinel_dataset = ee.ImageCollection('COPERNICUS/S2_SR_HARMONIZED')
                   .filterDate(app.data.target_year + '-01-01', app.data.target_year + '-12-31')
-                  .filter(ee.Filter.lt('CLOUDY_PIXEL_PERCENTAGE',20))
+                  .filter(ee.Filter.lt('CLOUDY_PIXEL_PERCENTAGE',50))
                   .map(maskS2clouds); 
   displayBrowseImg(LDTS_filters, sentinel_dataset, aoiBox, final_feature)
 }
-var waitMsgImgPanel = ui.Label({
-  value: '⚙️' + ' Processing, please wait.',
-  style: {
-    stretch: 'horizontal',
-    textAlign: 'center',
-    backgroundColor: '#d3d3d3'
-  }
-});
 
 var visualization = {min: 0.0,max: 0.3,bands: ['B4', 'B3', 'B2']}
 function displayBrowseImg(col, sentinel_dataset, aoiBox, aoiCircle){
-  waitMsgImgPanel.style().set('shown', true);
-  right_panel.add(waitMsgImgPanel);
-  waitMsgImgPanel.style().set('shown', false);
-  
   var RGB_PARAMS = {bands: [app.data.selectb1,app.data.selectb2,app.data.selectb3], min:0.0, max:3000}
   
   // Sentinel Display
@@ -257,7 +249,7 @@ function displayBrowseImg(col, sentinel_dataset, aoiBox, aoiCircle){
 
 /* * Auxiliary Information Display * */
 var down_mid_txt = ui.Label({
-  value:"Display Auxiliary Information",
+  value:"Show Auxiliary Infors and Interpreted Data",
   style:{stretch: 'horizontal',fontWeight: "bold",color:'gray',
         fontSize: "12px",padding: '1px',height:'18px'}
 })
@@ -279,7 +271,7 @@ function auxi_data_disp(){
   var number = ee.Number.parse(app.data.vali_index);
   var feature = ee.Feature(app.data.vali_list.get(number)).geometry();
   var vali_feature = ee.Feature(app.data.vali_list.get(number));
-  print(vali_feature,'vali_feature')
+  //Get Auxiliary  Information
   var prop_name = vali_feature.propertyNames().remove('system:index').remove('Rlab2020')
                   .remove('Rconf20').remove('ImportProps')
   prop_name = prop_name.sort()
@@ -289,7 +281,7 @@ function auxi_data_disp(){
   down_mid_panel.widgets().set(0,inter1_chart)
 }
   
-/* * import data * */
+/* * import data * */ 
 var Label_style = {stretch:'horizontal', fontWeight:"bold", fontSize:"12px"}
 var Textbox_style = {stretch:'horizontal', fontWeight:"bold", fontSize:"6px"}
 function data_import(){
@@ -413,6 +405,7 @@ function alter_pro(){
   //import sample data 
   var num = ee.Number.parse(app.data.vali_index);
   var feature = ee.Feature(app.data.vali_list.get(num))
+  var vali_feature = ee.Feature(app.data.vali_list.get(num))
   var prop_name = feature.propertyNames()
   var old_feature = ee.Feature(app.data.vali_list.get(num)).select(prop_name)
   var new_feature = old_feature.set(
@@ -421,27 +414,40 @@ function alter_pro(){
       app.data.property_name2,app.data.Import_props
       )
   app.data.vali_list = app.data.vali_list.replace(old_feature, new_feature)
-  print(app.data.vali_list)
+  
+  //Get All  Information
+  down_mid_panel.clear()
+  var prop_name = vali_feature.propertyNames().remove('system:index')
+  prop_name = prop_name.sort()
+  var prop_info = vali_feature.toArray(prop_name)
+  prop_info = prop_info.reshape([1,prop_name.length()])
+  var inter_chart = ui.Chart.array.values(prop_info,1,prop_name).setSeriesNames(['MultiLabs']).setChartType('Table')
+  down_mid_panel.widgets().set(0,inter_chart)
 }
 
 /* * Export new dataset added property * */
-function exporttodrive(){
-  //import sample data 
-  Export.table.toDrive({
-    collection: ee.FeatureCollection(app.data.vali_list),
-    description: app.data.description,
-    folder: app.data.folder, 
-    fileFormat: app.data.format_select
-  });
-} 
-function exporttoAsset(){
-  //import sample data 
-  Export.table.toAsset({
-    collection: ee.FeatureCollection(app.data.vali_list),
-    description: app.data.description,
-    assetId: app.data.assetsID
-  });
-}
+// function exporttodrive(){
+//   //import sample data 
+//   Export.table.toDrive({
+//     collection: ee.FeatureCollection(app.data.vali_list),
+//     description: app.data.description,
+//     folder: app.data.folder, 
+//     fileFormat: app.data.format_select
+//   });
+// } 
+// function exporttoAsset(){
+//   //import sample data 
+//   Export.table.toAsset({
+//     collection: ee.FeatureCollection(app.data.vali_list),
+//     description: app.data.description,
+//     assetId: app.data.assetsID
+//   });
+// }
+var downloadURL_panel = ui.Panel({
+  widgets:[ui.Label("The download URL:",Label_style)],
+  layout: ui.Panel.Layout.flow('horizontal', true),
+  //style: {width:'40%', backgroundColor: '#d3d3d3'}
+});
 
 /* * Initialize UI interface * */
 var down_right_txt = ui.Label({
@@ -589,7 +595,7 @@ var import_WantedProps = ui.Textbox({
   style: Textbox_style
 })
 var alter_probutton = ui.Button({ 
-  label: "Change Property",
+  label: "Change Property and Show Results",
   style: Label_style,
   onClick: alter_pro
 });
@@ -600,17 +606,12 @@ var saveinfo_txt = ui.Label({
         fontSize: "12px",padding: '1px',backgroundColor:'black',height:'18px'}
 })
 var name_save_txt = ui.Label({
-  value:'Description/Folder/FileFormat',
+  value:'Description/FileFormat',
   style: Label_style
 })
 var Description = ui.Textbox({
   value: app.data.description, 
   onChange: function(value) {app.data.description = value},
-  style: Textbox_style
-})
-var Folder = ui.Textbox({
-  value: app.data.folder, 
-  onChange: function(value) {app.data.folder = value},
   style: Textbox_style
 })
 var FileFormat = ui.Select({
@@ -619,29 +620,19 @@ var FileFormat = ui.Select({
   onChange: function (value) {app.data.format_select = value},
  style:Textbox_style
 })
-var saveDrive_button = ui.Button({ 
-  label: "Save to Drive",
+var saveURL_button = ui.Button({ 
+  label: "Get Download URL",
   style: Label_style,
-  onClick: exporttodrive
-});
-var name_save_asset = ui.Label({
-  value:'Description/Assets ID',
-  style: Label_style
-})
-var Description_asset = ui.Textbox({
-  value: app.data.description, 
-  onChange: function(value) {app.data.description = value},
-  style: Textbox_style
-})
-var assetsID_asset = ui.Textbox({
-  value: app.data.assetsID, 
-  onChange: function(value) {app.data.assetsID = value},
-  style: Textbox_style
-})
-var saveAssets_button = ui.Button({ 
-  label: "Save to Assets",
-  style: Label_style,
-  onClick: exporttoAsset
+  onClick: function (){
+    downloadURL_panel.clear()
+    downloadURL_panel.widgets().set(0,ui.Label("The download URL:",Label_style))
+    var fc = ee.FeatureCollection(app.data.vali_list);
+    var downloadUrl = fc.getDownloadURL({
+      format: app.data.format_select,
+      filename: app.data.description
+    });
+    downloadURL_panel.widgets().set(1,ui.Label(downloadUrl))
+  }
 });
 
 var interpanel = ui.Panel({
@@ -649,11 +640,9 @@ var interpanel = ui.Panel({
       widgets:[property_name1, property_name3, property_name2], layout:ui.Panel.Layout.flow('horizontal')
     }), ui.Panel({
       widgets:[import_pri, import_conf, import_WantedProps], layout:ui.Panel.Layout.flow('horizontal')
-    }), alter_probutton, saveinfo_txt, name_save_asset, ui.Panel({
-      widgets:[Description_asset, assetsID_asset], layout:ui.Panel.Layout.flow('horizontal')
-    }),saveAssets_button,name_save_txt, ui.Panel({
-      widgets:[Description, Folder, FileFormat], layout:ui.Panel.Layout.flow('horizontal')
-    }),saveDrive_button
+    }), alter_probutton, saveinfo_txt,name_save_txt, ui.Panel({
+      widgets:[Description, FileFormat], layout:ui.Panel.Layout.flow('horizontal')
+    }),saveURL_button,downloadURL_panel
   ],
   style: {stretch: 'horizontal'},
   layout:ui.Panel.Layout.flow('vertical')
