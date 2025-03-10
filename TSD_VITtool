@@ -3,29 +3,30 @@
 var app={
   data:{
     sam_import:'users/zhaotingting/Test_Tookit/TS_AuxiliaryData',
-    vali_index:'0',
-    bufferDistance: 5,
-    zoom_size: 15,
     select_start_year: 1985,
     select_end_year: 2023,
+    zoom_size: 15,
+    vali_index:'0',
+    bufferDistance: 5,
     
     index_year: 2020,
     slide_window: 10,
     step_year: 2,
     
     prop_select_value: '',
-    primary_label: '0',
     conf_name: '',
-    confidence: '3',
-    change_value: 'Abrupt change',
-    Gradual_change_durations: 0,
     property_name2: 'ImportProps',
-    Import_props: '',
+    change_select_value: '',
+    Durations_select_value: '',
     
-    description: 'Save_file',
-    folder: 'Visual_interpretion',
+    primary_label: 0,
+    confidence: 0,
+    change_value: 0,  //change types = ['Stable':0, 'Abrupt change':1,'Gradual inter-annual change':2]
+    Gradual_change_durations: 0,
+    Import_props: 0,
+    
+    description: 'TSValData',
     format_select: 'CSV',
-    assetsID:'users/zhaotingting/Test_Tookit/Single_YearData',
     
     vali_list: null,
     rawlayer: null,
@@ -48,10 +49,9 @@ var TMBANDS = ['GREEN', 'SWIR2'];
 var chart_type = ['Time series','DOY']
 var file_format = ["CSV","GeoJSON", "KML", "KMZ","SHP","TFRecord"]
 var ccdParams = {breakpointBands:BPBANDS, tmaskBands:TMBANDS, dateFormat:1,lambda:0.002, maxIterations:10000};
-var runParams = {sDate:'1983-01-01', eDate:'2024-01-01', bandSelect:'SWIR1', nSegs:6};
+var runParams = {sDate:'1984-01-01', eDate:'2024-01-01', bandSelect:'SWIR1', nSegs:6};
 var vizParams = {red:'SWIR1', green:'NIR', blue:'RED', redMin:0, redMax:0.6, greenMin:0, greenMax:0.6, blueMin:0, blueMax:0.6};
 
-var change_values_list = ['Abrupt change','Gradual inter-annual change']
 // params panel
 var runParams_new = [
   {label: 'Max Segments:', value: 6},
@@ -76,24 +76,34 @@ app.data.vali_featureCollection = ee.FeatureCollection(ee.String(app.data.sam_im
 var size = app.data.vali_featureCollection.size();
 app.data.vali_list = app.data.vali_featureCollection.toList(size);
 
-var props_names = ee.Feature(app.data.vali_list.get(0)).propertyNames()
-var FVC_names = find_list(props_names, 'FVC').sort()
-var Cluster_names = find_list(props_names, 'ClusterLab').sort()
-var NewLab_names = ee.List(find_list(props_names, 'NewLab').sort())
-var NewConf_names = ee.List(find_list(props_names, 'Conf').sort())
-app.data.prop_select_value = NewLab_names.get[0]
-app.data.conf_name = NewConf_names.get[0]
-var auxiliary_names = props_names
-          .filter(ee.Filter.inList('item', FVC_names).not())
-          .filter(ee.Filter.inList('item', Cluster_names).not())
-          .filter(ee.Filter.inList('item', NewLab_names).not())
-          .filter(ee.Filter.inList('item', NewConf_names).not()).remove('system:index')
+var NewLab_names = [];
+for (var i = 1985; i <= 2024; i++) {NewLab_names.push('NewLab'+i)}
+var NewConf_names = [];
+for (var i = 1985; i <= 2024; i++) {NewConf_names.push('Conf'+i)}
+app.data.prop_select_value = NewLab_names[0]
+app.data.conf_name = NewConf_names[0]
 
-var year_list = ee.List.sequence(0,NewConf_names.size().subtract(1)).map(function(num){
-  var name = ee.String(NewConf_names.get(num))
-  var year = name.slice(4,null)
-  return year
+var Change_names = ['NoChange']
+for (var i = 1985; i <= 2024; i++) {Change_names.push('Change'+i)}
+var Durations_names = ['NoChange']
+for (var i = 1985; i <= 2024; i++) {Durations_names.push('Dura'+i)}
+app.data.change_select_value = Change_names[0]
+app.data.Durations_select_value = Durations_names[0]
+
+/* * * Auxiliary data visualization * * */
+var down_right_txt = ui.Label({value: "Show Auxiliary Info",style: ShowTitle_style})
+var down_right_auxi_panel = ui.Panel({widgets:[down_right_txt],style: panel_style});
+var down_right_label_txt = ui.Label({value: "Show Label Info",style: ShowTitle_style })
+var down_right_label_panel = ui.Panel({ widgets:[down_right_label_txt],style: panel_style});
+var down_right_panel = ui.Panel({
+  widgets:[ui.SplitPanel({ 
+    firstPanel:down_right_auxi_panel,
+    secondPanel:down_right_label_panel,
+    orientation:'horizontal'
+  })],
+  style: panel_style
 })
+
 function find_list(total_list, target_str){
   var filteredList = total_list.map(function(item) {
     item = ee.String(item)
@@ -106,22 +116,32 @@ function find_list(total_list, target_str){
   var target_lab =  filteredList.filter(ee.Filter.inList('item', ['0']).not());
   return target_lab
 }
-
-/* * * Auxiliary data visualization * * */
-var down_right_txt = ui.Label({value: "Show Auxiliary Info",style: ShowTitle_style})
-var down_right_auxi_panel = ui.Panel({widgets:[down_right_txt],style: panel_style});
-var down_right_label_txt = ui.Label({value: "Show Label Info",style: ShowTitle_style })
-var down_right_label_panel = ui.Panel({ widgets:[down_right_label_txt],style: panel_style});
-var down_right_panel = ui.Panel({
-  widgets:[ui.SplitPanel({
-    firstPanel:down_right_auxi_panel,
-    secondPanel:down_right_label_panel,
-    orientation:'horizontal'
-  })],
-  style: panel_style
-})
 function auxi_sam_disp(){
   //display sample
+  app.data.vali_featureCollection = ee.FeatureCollection(ee.String(app.data.sam_import));
+  var size = app.data.vali_featureCollection.size();
+  app.data.vali_list = app.data.vali_featureCollection.toList(size);
+  
+  app.data.props_names = ee.Feature(app.data.vali_list.get(0)).propertyNames()
+  print(app.data.props_names)
+  var FVC_names = ee.List(find_list(app.data.props_names, 'FVC').sort())
+  var Cluster_names = ee.List(find_list(app.data.props_names, 'ClusterLab').sort())
+  var NewLab_names = ee.List(find_list(app.data.props_names, 'NewLab').sort())
+  var NewConf_names = ee.List(find_list(app.data.props_names, 'Conf').sort())
+  
+  var auxiliary_names = app.data.props_names
+            .filter(ee.Filter.inList('item', FVC_names).not())
+            .filter(ee.Filter.inList('item', app.data.Cluster_names).not())
+            .filter(ee.Filter.inList('item', app.data.NewLab_names).not())
+            .filter(ee.Filter.inList('item', app.data.NewConf_names).not()).remove('system:index')
+  
+  //var year_list = NewConf_names.map(function(item) {return ee.Number.parse(item.slice(4))})
+  var year_list = ee.List.sequence(0,NewConf_names.size().subtract(1)).map(function(num){
+    var name = ee.String(NewConf_names.get(num))
+    var year = name.slice(4,null)
+    return year
+  })
+
   var lengths = (ee.Number(mapObj.layers().length()).subtract(1)).getInfo()
   if(lengths !== -1){
     for(var i = 0; i <= lengths; i += 1){
@@ -132,6 +152,7 @@ function auxi_sam_disp(){
   var number = ee.Number.parse(app.data.vali_index);
   var feature = ee.Feature(app.data.vali_list.get(number)).geometry();
   var vali_feature = ee.Feature(app.data.vali_list.get(number)); 
+  
   mapObj.centerObject(feature,app.data.zoom_size); 
   var final_feature = feature.buffer(ee.Number(app.data.bufferDistance)).bounds()
   mapObj.addLayer(final_feature,{},("sample_point" + app.data.vali_index));
@@ -145,15 +166,12 @@ function auxi_sam_disp(){
   /* * display interpreted labels * */
   var AnnualFVC_info = vali_feature.toArray(FVC_names).toList()
   var AnnualCluster_info = vali_feature.toArray(Cluster_names).toList()
-  var ALLLab_info = ee.List([AnnualFVC_info,AnnualCluster_info])
-  var year_List = ee.List.sequence(app.data.select_start_year,app.data.select_end_year)
+  var AnnualNewLab_info = vali_feature.toArray(NewLab_names).toList()
+  var AnnualConf_info = vali_feature.toArray(NewConf_names).toList()
   
-  var label_chart = ui.Chart.array.values(ALLLab_info,1,year_List).setSeriesNames(['Annual FVC','Cluster Label']).setChartType('Table')
-      .setOptions({
-          title:'Infos of FVC and Cluster',
-          vAxis:{title:'Infos of FVC and Cluster'},
-          hAxis:{title:'Year'}
-      })
+  var ALLLab_info = ee.List([AnnualFVC_info,AnnualCluster_info,AnnualNewLab_info,AnnualConf_info])
+  var label_chart = ui.Chart.array.values(ALLLab_info,1,year_list)
+              .setSeriesNames(['Annual FVC','Cluster Lab','New Lab','New Conf']).setChartType('Table')
   down_right_label_panel.widgets().set(0,label_chart)
   
   /* * display LandTrendr lines * */
@@ -175,7 +193,7 @@ function data_import(){
   var validationtxt = ui.Textbox({value: app.data.vali_index,onChange: function (value){ app.data.vali_index = value },style: Textbox_style});
   var BufferDis_label = ui.Label({value:"Buffer Distance of Sample",style: Label_style})
   var BufferDistxt = ui.Textbox({value: app.data.bufferDistance,onChange: function(value) {app.data.bufferDistance = parseFloat(value, 10)},style: Textbox_style});
-  var disp_AuxSam_button = ui.Button({ label: "Show", onClick: auxi_sam_disp, style: Label_style })
+  var disp_AuxSam_button = ui.Button({ label: "Show Sample, Infos, and LandTrendr chart", onClick: auxi_sam_disp, style: Label_style })
   
   var import_data_panel = ui.Panel({
     widgets:[ import_txt, ui.Panel({
@@ -198,34 +216,42 @@ function data_import(){
 function alter_pro(){
   var num = ee.Number.parse(app.data.vali_index);
   var feature = ee.Feature(app.data.vali_list.get(num))
+  
   var prop_name = feature.propertyNames()
   var old_feature = ee.Feature(app.data.vali_list.get(num)).select(prop_name)
   var new_feature = old_feature.set(
               app.data.prop_select_value, app.data.primary_label,//pri
               app.data.conf_name, app.data.confidence,
-              'change_type', app.data.change_value,
-              'Durations', app.data.Gradual_change_durations,
+              app.data.change_select_value, app.data.change_value,
+              app.data.Durations_select_value, app.data.Gradual_change_durations,
               app.data.property_name2,app.data.Import_props
             )
   app.data.vali_list = app.data.vali_list.replace(old_feature,new_feature)
-  print(app.data.vali_list)
+  
+  /* * display interpreted labels * */
+  down_right_auxi_panel.clear()
+  var intered_names = ee.List([app.data.prop_select_value,app.data.conf_name,app.data.change_select_value,app.data.Durations_select_value,app.data.property_name2])
+  var intered_info = ee.Feature(new_feature).toArray(intered_names)
+  intered_info = intered_info.reshape([1,intered_names.length()])
+  var intered_chart = ui.Chart.array.values(intered_info,1,intered_names).setSeriesNames(['MultiLabs']).setChartType('Table')
+  down_right_auxi_panel.widgets().set(0,intered_chart)
 }
 
 /* * * Export new dataset added property * * */
-function exporttodrive(){
-  Export.table.toDrive({
-    collection: ee.FeatureCollection(app.data.vali_list),
-    description: app.data.description,
-    folder: app.data.folder, 
-    fileFormat: app.data.format_select
+var downloadURL_panel = ui.Panel({
+  widgets:[ui.Label("The download URL:",Label_style)],
+  layout: ui.Panel.Layout.flow('horizontal', true),
+  //style: {width:'40%', backgroundColor: '#d3d3d3'}
+});
+function downloadURL(){
+  downloadURL_panel.clear()
+  downloadURL_panel.widgets().set(0,ui.Label("The download URL:",Label_style))
+  var fc = ee.FeatureCollection(app.data.vali_list);
+  var downloadUrl = fc.getDownloadURL({
+    format: app.data.format_select,
+    filename: app.data.description
   });
-} 
-function exporttoAsset(){
-  Export.table.toAsset({
-    collection: ee.FeatureCollection(app.data.vali_list),
-    description: app.data.description,
-    assetId: app.data.assetsID
-  });
+  downloadURL_panel.widgets().set(1,ui.Label(downloadUrl))
 }
 
 /* * * Parameter Settings and Visualization of CCD Model * * */
@@ -305,7 +331,7 @@ runParams_new.forEach(function(param, index){
 var param_Panel = ui.Panel(paramPanels, null, {stretch: 'horizontal'})
 // function to get LT parameter setting
 var getParams = function(){
-  return { 
+  return {  
     maxSegments:              parseInt(paramBoxes[0].getValue()),
     spikeThreshold:         parseFloat(paramBoxes[1].getValue()),
     vertexCountOvershoot:     parseInt(paramBoxes[2].getValue()),
@@ -336,6 +362,7 @@ function show_images(year, aoi){
 // function to draw plots of source and fitted time series to panel
 function plotTimeSeries(){  
   down_mid_panel = down_mid_panel.clear();
+  down_mid_panel.widgets().set(0, down_mid_txt)
   var number = ee.Number.parse(app.data.vali_index);
   var feature = ee.Feature(app.data.vali_list.get(number)).geometry();
   var startYear = app.data.select_start_year;
@@ -351,7 +378,7 @@ function plotTimeSeries(){
           vAxis:{'maxValue': 1000, 'minValue': -1000}
         },
         {columns: [0, 1, 2]});
-  down_mid_panel.widgets().set(0, chart_trendr)
+  down_mid_panel.widgets().set(1, chart_trendr)
   chart_trendr.onClick(function(x) {
       if (x) {
         show_images(x, feature)
@@ -444,45 +471,47 @@ var ndvindsi_set_panel = ui.Panel({
 })
 
 /* * * Import of Time-series Land Cover Information for Visual Interpretation * * */
-var info_txt = ui.Label({value:'Import interpreted information',style:mainTitle_style})
+var info_txt = ui.Label({value:'Import and save interpreted infos',style:mainTitle_style})
 var property_name_txt = ui.Label({value:'Import Primary Label/Confidence/ChangeType/Durations',style:Label_style})
-var prop_select = ui.Select({items:NewLab_names.getInfo(),value:app.data.prop_select_value,onChange:function(value){app.data.prop_select_value = value},style:Textbox_style})
-var import_pri = ui.Textbox({placeholder:'New Label',value:app.data.primary_label,onChange:function(value){app.data.primary_label = value},style:Textbox_style})
-var conf_select = ui.Select({items:NewConf_names.getInfo(),value:app.data.conf_name,onChange:function(value){app.data.conf_name = value},style:Textbox_style})
-var import_conf = ui.Textbox({placeholder:'Conf',value:app.data.confidence,onChange:function(value){app.data.confidence = value},style:Textbox_style})
-var changeSelect_txt = ui.Label({value:'Change type',style:{height: '30px', stretch: 'horizontal',fontWeight: "bold", color:'black', fontSize: "12px", backgroundColor:'#F3F3F3'}})
-var changeType_select = ui.Select({items:change_values_list,value:app.data.change_value,
-  onChange:function(value){app.data.change_value = value},style:Textbox_style})
-var changeDurations_txt = ui.Label({value:'Gradual Change Durations',
-      style:{height: '35px', stretch: 'horizontal',fontWeight: "bold", color:'black', fontSize: "12px", backgroundColor:'#F3F3F3'}})
-var changeDurations = ui.Textbox({value:app.data.Gradual_change_durations,onChange:function(value){app.data.Gradual_change_durations = value},style:Textbox_style})
+var prop_select = ui.Select({items:NewLab_names,value:app.data.prop_select_value,onChange:function(value){app.data.prop_select_value = value},style:Textbox_style})
+var import_pri = ui.Textbox({placeholder:'New Label',value:app.data.primary_label,onChange:function(value){app.data.primary_label = parseInt(value, 10)},style:Textbox_style})
+var conf_select = ui.Select({items:NewConf_names,value:app.data.conf_name,onChange:function(value){app.data.conf_name = value},style:Textbox_style})
+var import_conf = ui.Textbox({placeholder:'Conf',value:app.data.confidence,onChange:function(value){app.data.confidence = parseInt(value, 10)},style:Textbox_style})
 var property_name2txt = ui.Textbox({placeholder: 'Wanted Props',value: app.data.property_name2,
     onChange: function(value) {app.data.property_name2 = value},style: Textbox_style})
 var import_WantedProps = ui.Textbox({placeholder: 'Wanted Props',value: app.data.Import_props,
-    onChange: function(value) {app.data.Import_props = value},style: Textbox_style})
-var alter_probutton = ui.Button({ label: "Change Property",style:Label_style,onClick:alter_pro,style:Textbox_style});
+    onChange: function(value) {app.data.Import_props = parseInt(value, 10)},style: Textbox_style})
+    
+var changeSelect_txt = ui.Label({value:"Change type:'Stable'0/'Abrupt change'1/'Gradual inter-annual change'2",style:{width: '50%', height: '35px',stretch: 'horizontal',fontWeight: "bold", color:'black', fontSize: "12px", backgroundColor:'#F3F3F3'}})
+var change_select = ui.Select({items:Change_names,value:app.data.change_select_value,onChange:function(value){app.data.change_select_value = value},style: Textbox_style})
+var changeType = ui.Textbox({placeholder: 'Change type',value:app.data.change_value,
+    onChange:function(value){app.data.change_value = parseInt(value, 10)},style: Textbox_style})
 
-var name_save_txt = ui.Label({value:'Description/Folder/FileFormat',style:Label_style})
-var Description = ui.Textbox({value:app.data.description, onChange:function(value){app.data.description = value}, style:Textbox_style})
-var Folder = ui.Textbox({value:app.data.folder, onChange:function(value){app.data.folder = value},style:Textbox_style})
-var FileFormat = ui.Select({items:file_format, value:app.data.format_select, onChange:function (value){app.data.format_select = value},style:Textbox_style})
-var saveDrive_button = ui.Button({ label: "Save to Drive",style: Label_style,onClick: exporttodrive});
-var name_save_asset = ui.Label({value:'Description/Assets ID',style: Label_style})
-var Description_asset = ui.Textbox({value: app.data.description, onChange: function(value) {app.data.description = value},style: Textbox_style})
-var assetsID_asset = ui.Textbox({value: app.data.assetsID, onChange: function(value) {app.data.assetsID = value},style: Textbox_style})
-var saveAssets_button = ui.Button({ label: "Save to Assets",style: Label_style,onClick: exporttoAsset});
+var changeDurations_txt = ui.Label({value:'Gradual Change Durations',
+      style:{width: '40%',height: '35px', stretch: 'horizontal',fontWeight: "bold", color:'black', fontSize: "12px", backgroundColor:'#F3F3F3'}})
+var changeDurations_select = ui.Select({items:Durations_names,value:app.data.Durations_select_value,onChange:function(value){app.data.Durations_select_value = value},style: Textbox_style})
+var changeDurations = ui.Textbox({value:app.data.Gradual_change_durations,onChange:function(value){app.data.Gradual_change_durations = parseInt(value, 10)},style: Textbox_style})
+
+var alter_probutton = ui.Button({ label: "Change Property and Show Results",style:Label_style,onClick:alter_pro,style:Textbox_style});
+
+var name_save_txt = ui.Label({value:'Description/FileFormat', style: Label_style})
+var Description = ui.Textbox({value: app.data.description, onChange: function(value) {app.data.description = value},style: Textbox_style})
+var FileFormat = ui.Select({items: file_format, value: app.data.format_select, onChange: function (value) {app.data.format_select = value},style:Textbox_style})
+var saveURL_button = ui.Button({ label: "Get Download URL",style: Label_style, onClick:downloadURL})
 
 var interpanel = ui.Panel({
   widgets:[info_txt,
     property_name_txt,ui.Panel({
-      widgets:[prop_select,conf_select,changeSelect_txt,changeDurations_txt,property_name2txt],layout:ui.Panel.Layout.flow('horizontal')
+      widgets:[prop_select,conf_select,property_name2txt],layout:ui.Panel.Layout.flow('horizontal')
     }),ui.Panel({
-      widgets:[import_pri,import_conf,changeType_select,changeDurations,import_WantedProps],layout:ui.Panel.Layout.flow('horizontal')
-    }),alter_probutton,name_save_asset, ui.Panel({
-      widgets:[Description_asset, assetsID_asset], layout:ui.Panel.Layout.flow('horizontal')
-    }),saveAssets_button,name_save_txt, ui.Panel({
-      widgets:[Description, Folder, FileFormat], layout:ui.Panel.Layout.flow('horizontal')
-    }),saveDrive_button ],
+      widgets:[import_pri,import_conf,import_WantedProps],layout:ui.Panel.Layout.flow('horizontal')
+    }),ui.Panel({
+      widgets:[changeSelect_txt,change_select,changeType],layout:ui.Panel.Layout.flow('horizontal')
+    }),ui.Panel({
+      widgets:[changeDurations_txt,changeDurations_select,changeDurations],layout:ui.Panel.Layout.flow('horizontal')
+    }),alter_probutton,name_save_txt, ui.Panel({
+      widgets:[Description, FileFormat], layout:ui.Panel.Layout.flow('horizontal')
+    }),saveURL_button,downloadURL_panel],
   style: {stretch: 'horizontal'},
   layout:ui.Panel.Layout.flow('vertical')
 })
@@ -490,7 +519,7 @@ var interpanel = ui.Panel({
 /* * * constuct layer * * */
 var import_data_panel = data_import()
 var up_left_panel = ui.Panel({
-  widgets:[import_data_panel,ccd_seriespanel,LandTrendrPanel],
+  widgets:[import_data_panel,LandTrendrPanel,ccd_seriespanel],
   layout:ui.Panel.Layout.flow('vertical'),
   style: panel_style
 })
