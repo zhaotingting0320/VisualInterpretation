@@ -1,0 +1,71 @@
+//* * * main layer * * //
+
+var mapObj = ui.Map()
+var link_1 = link_ref('Open AIExTool')
+link_1.setUrl('https://zhaotingting.users.earthengine.app/view/aiextool')
+var link_2 = link_ref('Open SSD_VIT tool');
+link_2.setUrl('https://zhaotingting.users.earthengine.app/view/ssdvit')
+var link_3 = link_ref('Open TimeIExTool');
+link_3.setUrl('https://zhaotingting.users.earthengine.app/view/timeiextool')
+var link_4 = link_ref('Open TSD_VIT tool');
+link_4.setUrl('https://zhaotingting.users.earthengine.app/view/tsdvit')
+
+var descript1 = descript_lab('Auxiliary Information Extraction Tool (AIExTool): Extract multi-source auxiliary data to assist visual interpretation')
+var descript2 = descript_lab('Single-year Sample Dataset Visual Interpretation Tool (SSD_VIT): Collect single-year land cover labels')
+var descript3 = descript_lab('Time-series Information Extraction Tool (TimeIExTool): Assign initial time-series land cover labels to each sample')
+var descript4 = descript_lab('Time-series Sample Dataset Visual Interpretation Tool (TSD_VIT): Determine time-series land cover information')
+
+var link_label1 = clik_label('Click and open the link of AIExTool')
+var link_label2 = clik_label('Click and open the link of SSD_VIT')
+var link_label3 = clik_label('Click and open the link of TimeIExTool')
+var link_label4 = clik_label('Click and open the link of TSD_VIT')
+
+var interval1 = interval_label('-----------------------------------------------------------------------------------------------------')
+var interval2 = interval_label('-----------------------------------------------------------------------------------------------------')
+var interval3 = interval_label('-----------------------------------------------------------------------------------------------------')
+
+var left_panel = ui.Panel({
+  widgets:[descript1,ui.Panel({widgets:[link_label1,link_1], layout:ui.Panel.Layout.flow('horizontal')}),
+            interval1,descript2,ui.Panel({widgets:[link_label2,link_2], layout:ui.Panel.Layout.flow('horizontal')}),
+            interval2,descript3,ui.Panel({widgets:[link_label3,link_3], layout:ui.Panel.Layout.flow('horizontal')}),
+            interval3,descript4,ui.Panel({widgets:[link_label4,link_4], layout:ui.Panel.Layout.flow('horizontal')})],
+  layout: ui.Panel.Layout.flow('vertical', true),
+  style: {width: '50%'}
+});
+
+var all_panel = ui.SplitPanel({
+  firstPanel: left_panel,
+  secondPanel: mapObj,
+  orientation: 'horizontal',
+  wipe: false,
+})
+  
+/**insert panel on layer**/
+ui.root.widgets().reset([all_panel])
+
+
+function link_ref(label_txt){
+  return ui.Label(label_txt, {fontWeight: 'bold', color: 'blue', fontSize:"20px"})
+}
+
+function descript_lab(descript_txt){
+  return ui.Label({
+    value: descript_txt,
+    style: {stretch:'horizontal', fontWeight:"bold", color:"white",fontSize:"18px", backgroundColor:'#7F7F7F'}
+  })
+}
+
+function clik_label(descript_txt){
+  return ui.Label({
+    value: descript_txt,
+    style: {width: '50%', height: '35px',stretch:'horizontal', 
+        fontWeight:"bold", fontSize:"18px", backgroundColor:'#F3F3F3'}
+  })
+}
+
+function interval_label(descript_txt){
+  return ui.Label({
+    value: descript_txt,
+    style: {stretch:'horizontal', fontWeight:"bold", fontSize:"18px"}
+  })
+}
