@@ -1,0 +1,149 @@
+/* * * * 
+    Assigning initial time-series land cover labels to each sample using the K-Means clustering method 
+* * * */
+/* * preparing * */
+var app={
+  data:{
+    sam_import: 'users/zhaotingting/Test_Tookit/Single_YearData',
+    Collect_LabPropName: 'Lab2020',
+    Collect_ConfName:'Conf2020',
+    Collect_ID:'Point_ID',
+    start_year: 1985,
+    end_year: 2023,
+    SetTileScale:2,
+    
+    description: 'TS_AuxiliaryData',
+    format_select:'SHP',
+  }
+};
+
+var file_format = ["CSV","GeoJSON", "KML", "KMZ","SHP","TFRecord"]
+var StudyRegion = ee.Geometry.Polygon([[-179.99,-89.99],[179.99,-89.99],[179.99,89.99],[-179.99,89.99]])
+var AuxiKMExUtils = require('users/zhaotingting/toolkit:Toolkit_JS/TSAuxiliaryKMeans.js')
+
+var mapObj = ui.Map()
+
+var Label_style = {stretch:'horizontal', fontWeight:"bold", fontSize:"12px"}
+var Textbox_style = {stretch:'horizontal', fontWeight:"bold", fontSize:"6px"}
+
+var downloadURL_panel = ui.Panel({
+  widgets:[ui.Label("The download URL:",Label_style)],
+  layout: ui.Panel.Layout.flow('horizontal', true),
+});
+
+var years_num = app.data.end_year - app.data.start_year
+
+
+var import_txt = ui.Label({
+  value:"KMeans Clustering and Time-series Information Extraction", style:{stretch:'horizontal', fontWeight:"bold", color:'white',
+        fontSize:"16px", padding:'1px', backgroundColor:'black', height:'18px'}
+})
+var ToolInstructions = ui.Label({
+  value:"Tool Instructions：",
+  style: {stretch:'horizontal', fontWeight:"bold", fontSize:"16px"}
+})
+var tool_manual = ui.Label({
+  value: "Long-term initial land cover labels are assign based on the K-Means clustering algorithm. "+
+    "And then, the annual fractional vegetation coverage (FVC), initial land cover labels and previous auxiliary information "+ 
+    "(,including global canopy height and terrain characteristics (elevation, slope)) are extracted.",
+  style: {stretch:'horizontal', fontWeight:"bold", fontSize:"14px"}
+})
+var vali_file_title = ui.Label({
+  value:"Asset filepath",
+  style: Label_style
+})
+var vali_filepathtxt = ui.Textbox({
+  value: app.data.sam_import,
+  onChange: function(value) {app.data.sam_import = value},
+  style: Textbox_style
+});
+
+var Collect_LabProp_title = ui.Label({
+  value:"PropName collected for a single year",
+  style: Label_style
+})
+var Collect_LabProptxt = ui.Textbox({
+  value: app.data.Collect_LabPropName,
+  onChange: function(value) {app.data.Collect_LabPropName = value},
+  style: Textbox_style
+});
+
+
+var Collect_Conf_title = ui.Label({
+  value:"Confidence Name collected for a single year",
+  style: Label_style
+})
+var Collect_Conftxt = ui.Textbox({
+  value: app.data.Collect_ConfName,
+  onChange: function(value) {app.data.Collect_ConfName = value},
+  style: Textbox_style
+});
+
+
+
+var start_year_label = ui.Label({value:"Start Year",style: Label_style})
+var start_yeartxt = ui.Textbox({value: app.data.start_year,onChange: function(value) {app.data.start_year = value},style: Textbox_style});
+var end_year_label = ui.Label({value:"End Year",style: Label_style})
+var end_yeartxt = ui.Textbox({value: app.data.end_year,onChange: function(value) {app.data.end_year = value},style: Textbox_style});
+
+var DownloadLabel = ui.Label({value:"Download Filename", style: Label_style})
+var Description = ui.Textbox({value: app.data.description, 
+  onChange: function(value) {app.data.description = value},style: Textbox_style})
+
+var FileFormatLabel = ui.Label({value:"File Format", style: Label_style})
+var FileFormat = ui.Select({
+  items: file_format, 
+  value: app.data.format_select, 
+  onChange: function (value) {app.data.format_select = value},
+  style:Textbox_style
+})
+
+var TSAuxiExButton = ui.Button({ 
+  label: "Extrct Time-series Infos and Download",
+  style: Label_style,
+  onClick: function (){
+    downloadURL_panel.clear()
+    downloadURL_panel.widgets().set(0,ui.Label("The download URL:",{stretch:'horizontal', fontWeight:"bold", fontSize:"14px"}))
+    var vali_featureCollection = ee.FeatureCollection(ee.String(app.data.sam_import))
+    //KMeans clustering and information extraction
+    var new_col = AuxiKMExUtils.TSinfos_extrct(vali_featureCollection,app.data.Collect_LabPropName,
+            app.data.Collect_ConfName,app.data.Collect_ID,
+            app.data.start_year,app.data.end_year,app.data.SetTileScale)
+    
+    var fc = ee.FeatureCollection(new_col)
+    print(fc,'fc')
+    var feature = fc.first().geometry()
+    mapObj.centerObject(feature,10);   
+    mapObj.addLayer(fc,{},"Samples")
+    
+    var downloadUrl = fc.getDownloadURL({
+      format: app.data.format_select,
+      filename: app.data.description
+    });
+    downloadURL_panel.widgets().set(1,ui.Label(downloadUrl))
+  }
+})
+
+var left_panel = ui.Panel({
+  widgets:[import_txt,ToolInstructions, tool_manual, ui.Panel({widgets:[vali_file_title,vali_filepathtxt], layout:ui.Panel.Layout.flow('horizontal')}),
+    ui.Panel({widgets:[Collect_LabProp_title,Collect_LabProptxt], layout:ui.Panel.Layout.flow('horizontal')}),
+    ui.Panel({widgets:[Collect_Conf_title,Collect_Conftxt], layout:ui.Panel.Layout.flow('horizontal')}),
+    ui.Panel({widgets:[start_year_label,start_yeartxt], layout:ui.Panel.Layout.flow('horizontal')}),
+    ui.Panel({widgets:[end_year_label,end_yeartxt], layout:ui.Panel.Layout.flow('horizontal')}),
+    ui.Panel({widgets:[DownloadLabel,Description], layout:ui.Panel.Layout.flow('horizontal')}),
+    ui.Panel({widgets:[FileFormatLabel,FileFormat], layout:ui.Panel.Layout.flow('horizontal')}),
+    TSAuxiExButton,downloadURL_panel],
+  layout: ui.Panel.Layout.flow('vertical', true)
+});
+
+var all_panel = ui.SplitPanel({
+  firstPanel: left_panel,
+  secondPanel: mapObj,
+  orientation: 'horizontal',
+  wipe: false,
+})
+  
+/**insert panel on layer**/
+ui.root.widgets().reset([all_panel])
+
+  
