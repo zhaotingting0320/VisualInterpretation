@@ -1,0 +1,119 @@
+/* * * * 
+    Auxiliary Information Extraction for single year 
+* * * */
+/* * preparing * */
+var app={
+  data:{
+    sam_import: 'users/zhaotingting/Test_Tookit/Single_YearData',
+    target_year: '2020',
+    description: 'AuxiliarySampleDataSet',
+    format_select:'SHP',
+  }
+};
+var file_format = ["CSV","GeoJSON", "KML", "KMZ","SHP","TFRecord"]
+var StudyRegion = ee.Geometry.Polygon([[-179.99,-89.99],[179.99,-89.99],[179.99,89.99],[-179.99,89.99]])
+var AuxiExUtils = require('users/zhaotingting/toolkit:Toolkit_JS/AuxiliaryExtract.js')
+
+var mapObj = ui.Map()
+
+var Label_style = {stretch:'horizontal', fontWeight:"bold", fontSize:"12px"}
+var Textbox_style = {stretch:'horizontal', fontWeight:"bold", fontSize:"6px"}
+
+var downloadURL_panel = ui.Panel({
+  widgets:[ui.Label("The download URL:",Label_style)],
+  layout: ui.Panel.Layout.flow('horizontal', true),
+  //style: {width:'40%', backgroundColor: '#d3d3d3'}
+});
+var import_txt = ui.Label({
+  value:"Auxiliary information Extraction Tool (AIExTool)", style:{stretch:'horizontal', fontWeight:"bold", color:'white',
+        fontSize:"16px", padding:'1px', backgroundColor:'black', height:'18px'}
+})
+var ToolInstructions = ui.Label({
+  value:"Tool Instructions：",
+  style: {stretch:'horizontal', fontWeight:"bold", fontSize:"16px"}
+})
+var tool_manual = ui.Label({
+  value: "This tool is used to extract auxiliary information, including global vegetation cover, vegetation index, global canopy height, terrain characteristics (elevation, slope), etc."+
+    "The extracted auxiliary data is subsequently imported into the SSD_VIT tool to assist in visual interpretation.",
+  style: {stretch:'horizontal', fontWeight:"bold", fontSize:"14px"}
+})
+var vali_file_title = ui.Label({
+  value:"Asset filepath",
+  style: Label_style
+})
+var vali_filepathtxt = ui.Textbox({
+  value: app.data.sam_import,
+  onChange: function(value) {app.data.sam_import = value},
+  style: Textbox_style
+});
+var target_year_label = ui.Label({
+  value:"Target Year",
+  style: Label_style
+})
+var target_yeartxt = ui.Textbox({
+  value: app.data.target_year,
+  onChange: function(value) {app.data.target_year = value},
+  style: Textbox_style
+});
+var DownloadLabel = ui.Label({
+  value:"Download Filename", 
+  style: Label_style
+})
+var Description = ui.Textbox({
+  value: app.data.description, 
+  onChange: function(value) {app.data.description = value},
+  style: Textbox_style
+})
+var FileFormatLabel = ui.Label({value:"File Format", style: Label_style})
+var FileFormat = ui.Select({
+  items: file_format, 
+  value: app.data.format_select, 
+  onChange: function (value) {app.data.format_select = value},
+  style:Textbox_style
+})
+
+var AuxiExButton = ui.Button({ 
+  label: "Extrct Auxiliary Infos and Download",
+  style: Label_style,
+  onClick: function (){
+    downloadURL_panel.clear()
+    downloadURL_panel.widgets().set(0,ui.Label("The download URL:",{stretch:'horizontal', fontWeight:"bold", fontSize:"14px"}))
+    
+    var vali_featureCollection = ee.FeatureCollection(ee.String(app.data.sam_import))
+    var new_col = AuxiExUtils.auxiliary_extrct(vali_featureCollection,app.data.target_year)
+    var size = new_col.size();
+    app.data.vali_list = new_col.toList(size);
+    var fc = ee.FeatureCollection(app.data.vali_list)
+    var feature = ee.Feature(app.data.vali_list.get(0)).geometry()
+    mapObj.centerObject(feature,10);   
+    mapObj.addLayer(fc,{},"Samples")
+    
+    var downloadUrl = fc.getDownloadURL({
+      format: app.data.format_select,
+      filename: app.data.description
+    });
+    downloadURL_panel.widgets().set(1,ui.Label(downloadUrl))
+  }
+})
+
+var left_panel = ui.Panel({
+  widgets:[import_txt,ToolInstructions, tool_manual, ui.Panel({widgets:[vali_file_title,vali_filepathtxt], layout:ui.Panel.Layout.flow('horizontal')}),
+    ui.Panel({widgets:[target_year_label,target_yeartxt], layout:ui.Panel.Layout.flow('horizontal')}),
+    ui.Panel({widgets:[DownloadLabel,Description], layout:ui.Panel.Layout.flow('horizontal')}),
+    ui.Panel({widgets:[FileFormatLabel,FileFormat], layout:ui.Panel.Layout.flow('horizontal')}),
+    AuxiExButton,downloadURL_panel],
+  layout: ui.Panel.Layout.flow('vertical', true)
+});
+
+var all_panel = ui.SplitPanel({
+  firstPanel: left_panel,
+  secondPanel: mapObj,
+  orientation: 'horizontal',
+  wipe: false,
+})
+  
+/**insert panel on layer**/
+ui.root.widgets().reset([all_panel])
+
+  
+
