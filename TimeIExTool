@@ -14,6 +14,7 @@ var app={
     
     description: 'TS_AuxiliaryData',
     format_select:'SHP',
+    vali_list:null
   }
 };
 
@@ -22,9 +23,34 @@ var StudyRegion = ee.Geometry.Polygon([[-179.99,-89.99],[179.99,-89.99],[179.99,
 var AuxiKMExUtils = require('users/zhaotingting/toolkit:Toolkit_JS/TSAuxiliaryKMeans.js')
 
 var mapObj = ui.Map()
+var vali_featureCollection = ee.FeatureCollection(ee.String(app.data.sam_import));
+var size = vali_featureCollection.size();
+app.data.vali_list = vali_featureCollection.toList(size);
 
 var Label_style = {stretch:'horizontal', fontWeight:"bold", fontSize:"12px"}
 var Textbox_style = {stretch:'horizontal', fontWeight:"bold", fontSize:"6px"}
+
+function exporttoURL(){
+  downloadURL_panel.clear()
+  downloadURL_panel.widgets().set(0,ui.Label("The download URL:",{stretch:'horizontal', fontWeight:"bold", fontSize:"14px"}))
+  
+  var vali_featureCollection = ee.FeatureCollection(app.data.vali_list)
+  //KMeans clustering and information extraction
+  var new_col = AuxiKMExUtils.TSinfos_extrct(vali_featureCollection,app.data.Collect_LabPropName,
+          app.data.Collect_ConfName,app.data.Collect_ID,
+          app.data.start_year,app.data.end_year,app.data.SetTileScale)
+  
+  var fc = ee.FeatureCollection(new_col)
+  var feature = fc.first().geometry()
+  mapObj.centerObject(feature,10);   
+  mapObj.addLayer(fc,{},"Samples")
+  
+  var downloadUrl = fc.getDownloadURL({
+    format: app.data.format_select,
+    filename: app.data.description
+  });
+  downloadURL_panel.widgets().set(1,ui.Label(downloadUrl))
+}
 
 var downloadURL_panel = ui.Panel({
   widgets:[ui.Label("The download URL:",Label_style)],
@@ -32,7 +58,6 @@ var downloadURL_panel = ui.Panel({
 });
 
 var years_num = app.data.end_year - app.data.start_year
-
 
 var import_txt = ui.Label({
   value:"KMeans Clustering and Time-series Information Extraction", style:{stretch:'horizontal', fontWeight:"bold", color:'white',
@@ -54,7 +79,12 @@ var vali_file_title = ui.Label({
 })
 var vali_filepathtxt = ui.Textbox({
   value: app.data.sam_import,
-  onChange: function(value) {app.data.sam_import = value},
+  onChange: function(value) {
+    app.data.sam_import = value
+    var vali_featureCollection = ee.FeatureCollection(ee.String(app.data.sam_import));
+    var size = vali_featureCollection.size();
+    app.data.vali_list = vali_featureCollection.toList(size);
+  },
   style: Textbox_style
 });
 
@@ -67,8 +97,6 @@ var Collect_LabProptxt = ui.Textbox({
   onChange: function(value) {app.data.Collect_LabPropName = value},
   style: Textbox_style
 });
-
-
 var Collect_Conf_title = ui.Label({
   value:"Confidence Name collected for a single year",
   style: Label_style
@@ -89,9 +117,9 @@ var Collect_IDtxt = ui.Textbox({
 });
 
 var start_year_label = ui.Label({value:"Start Year",style: Label_style})
-var start_yeartxt = ui.Textbox({value: app.data.start_year,onChange: function(value) {app.data.start_year = value},style: Textbox_style});
+var start_yeartxt = ui.Textbox({value: app.data.start_year,onChange: function(value) {app.data.start_year = parseInt(value, 10)},style: Textbox_style});
 var end_year_label = ui.Label({value:"End Year",style: Label_style})
-var end_yeartxt = ui.Textbox({value: app.data.end_year,onChange: function(value) {app.data.end_year = value},style: Textbox_style});
+var end_yeartxt = ui.Textbox({value: app.data.end_year,onChange: function(value) {app.data.end_year = parseInt(value, 10)},style: Textbox_style});
 
 var DownloadLabel = ui.Label({value:"Download Filename", style: Label_style})
 var Description = ui.Textbox({value: app.data.description, 
@@ -108,26 +136,7 @@ var FileFormat = ui.Select({
 var TSAuxiExButton = ui.Button({ 
   label: "Extrct Time-series Infos and Download",
   style: Label_style,
-  onClick: function (){
-    downloadURL_panel.clear()
-    downloadURL_panel.widgets().set(0,ui.Label("The download URL:",{stretch:'horizontal', fontWeight:"bold", fontSize:"14px"}))
-    var vali_featureCollection = ee.FeatureCollection(ee.String(app.data.sam_import))
-    //KMeans clustering and information extraction
-    var new_col = AuxiKMExUtils.TSinfos_extrct(vali_featureCollection,app.data.Collect_LabPropName,
-            app.data.Collect_ConfName,app.data.Collect_ID,
-            app.data.start_year,app.data.end_year,app.data.SetTileScale)
-    
-    var fc = ee.FeatureCollection(new_col)
-    var feature = fc.first().geometry()
-    mapObj.centerObject(feature,10);   
-    mapObj.addLayer(fc,{},"Samples")
-    
-    var downloadUrl = fc.getDownloadURL({
-      format: app.data.format_select,
-      filename: app.data.description
-    });
-    downloadURL_panel.widgets().set(1,ui.Label(downloadUrl))
-  }
+  onClick: exporttoURL
 })
 
 var left_panel = ui.Panel({
