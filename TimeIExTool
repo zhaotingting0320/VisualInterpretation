@@ -6,7 +6,7 @@ var app={
   data:{
     sam_import: 'users/zhaotingting/Test_Tookit/Single_YearData',
     Collect_LabPropName: 'Lab2020',
-    Collect_ConfName:'Conf2020',
+    Collect_ConfName:'conf2020',
     Collect_ID:'Point_ID',
     start_year: 1985,
     end_year: 2023,
