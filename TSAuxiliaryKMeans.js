@@ -126,7 +126,6 @@ exports.TSinfos_extrct = function(samples,Collect_LabPropName,Collect_ConfName,I
   
     return ee.Feature(updatedFeature);
   });
-  print('ALL',new_samples)
   return ee.FeatureCollection(new_samples)
   
 }
