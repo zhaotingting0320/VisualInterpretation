@@ -118,23 +118,20 @@ function find_list(total_list, target_str){
 }
 function auxi_sam_disp(){
   //display sample
-  app.data.vali_featureCollection = ee.FeatureCollection(ee.String(app.data.sam_import));
-  var size = app.data.vali_featureCollection.size();
-  app.data.vali_list = app.data.vali_featureCollection.toList(size);
-  
   app.data.props_names = ee.Feature(app.data.vali_list.get(0)).propertyNames()
-  print(app.data.props_names)
   var FVC_names = ee.List(find_list(app.data.props_names, 'FVC').sort())
-  var Cluster_names = ee.List(find_list(app.data.props_names, 'ClusterLab').sort())
+  var Cluster_names = ee.List(find_list(app.data.props_names, 'CLab').sort())
   var NewLab_names = ee.List(find_list(app.data.props_names, 'NewLab').sort())
   var NewConf_names = ee.List(find_list(app.data.props_names, 'Conf').sort())
   
   var auxiliary_names = app.data.props_names
             .filter(ee.Filter.inList('item', FVC_names).not())
-            .filter(ee.Filter.inList('item', app.data.Cluster_names).not())
-            .filter(ee.Filter.inList('item', app.data.NewLab_names).not())
-            .filter(ee.Filter.inList('item', app.data.NewConf_names).not()).remove('system:index')
-  
+            .filter(ee.Filter.inList('item', Cluster_names).not())
+            .filter(ee.Filter.inList('item', NewLab_names).not())
+            .filter(ee.Filter.inList('item', NewConf_names).not())
+            .filter(ee.Filter.neq('item', 'NoChange'))
+            .filter(ee.Filter.neq('item', 'ImportProps')).remove('system:index')
+ 
   //var year_list = NewConf_names.map(function(item) {return ee.Number.parse(item.slice(4))})
   var year_list = ee.List.sequence(0,NewConf_names.size().subtract(1)).map(function(num){
     var name = ee.String(NewConf_names.get(num))
@@ -182,7 +179,17 @@ function auxi_sam_disp(){
 function data_import(){
   var import_txt = ui.Label({ value: "Initial data imported", style: mainTitle_style })
   var vali_file_title = ui.Label({ value: "Asset filepath", style: Label_style })
-  var vali_filepathtxt = ui.Textbox({value: app.data.sam_import,onChange: function (value){ app.data.sam_import = value },style: Textbox_style});
+  var vali_filepathtxt = ui.Textbox({
+    value: app.data.sam_import,
+    onChange: function (value){ 
+        app.data.sam_import = value
+        var vali_featureCollection = ee.FeatureCollection(ee.String(app.data.sam_import));
+        var size = vali_featureCollection.size();
+        app.data.vali_list = vali_featureCollection.toList(size)
+      },
+    style: Textbox_style
+    
+  });
   var start_year_label = ui.Label({value:"Start Year",style: Label_style})
   var start_yeartxt = ui.Textbox({value: app.data.select_start_year,onChange: function(value) { app.data.select_start_year = parseInt(value, 10)},style: Textbox_style});
   var end_year_label = ui.Label({value:"End Year",style: Label_style})
