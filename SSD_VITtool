@@ -2,7 +2,7 @@
 /* * preparing * */
 var app={
   data:{
-    sam_import: 'users/zhaotingting/Test_Tookit/AuxiliaryData',
+    sam_import: 'users/zhaotingting/Test_Tookit/AuxiliarySampleDataSet',
     vali_index: '0',
     target_year: '2020',
     bufferDistance: 5,
@@ -146,7 +146,8 @@ var ESA_visualization = {bands: ['Map']};
 // Import Dynamic World
 var className_DW = ['trees','crops','shrub_and_scrub','grass','flooded_vegetation','water','built','bare','snow_and_ice'];
 var palette_DW = ['006400','f096ff','ffbb22','ffff4c','0096a0','0064c8','fa0000','b4b4b4','f0f0f0'];
-var dynamic_world = ee.ImageCollection('GOOGLE/DYNAMICWORLD/V1').filterDate(target_year+'-01-01',target_year+'12-31')
+var dynamic_world = ee.ImageCollection('GOOGLE/DYNAMICWORLD/V1')
+                    .filterDate(app.data.target_year+'-01-01',app.data.target_year+'-12-31')
 var dynamic_world_major = (dynamic_world.select('label')).reduce(ee.Reducer.mode()).rename('label')
 var dwRgb = dynamic_world_major.select('label').visualize({min: 0, max: 8, palette: palette_DW}).divide(255);
 
@@ -159,10 +160,8 @@ var right_panel = ui.Panel({
   layout: ui.Panel.Layout.flow('horizontal', true),
   style: {width:'40%', backgroundColor: '#d3d3d3'}
 });
+
 function disp_samImg(){
-  var vali_featureCollection = ee.FeatureCollection(ee.String(app.data.sam_import));
-  var size = vali_featureCollection.size();
-  app.data.vali_list = vali_featureCollection.toList(size);
   mapObj.clear()
   right_panel.clear()
   mapObj.setOptions('SATELLITE')
@@ -180,21 +179,12 @@ function disp_samImg(){
   var ESA_WC_Tile = ESA_WC.clip(region_clip)
   var dwRgb_Tile = dwRgb.clip(region_clip)
   mapObj.addLayer(ESA_WC_Tile, ESA_visualization, 'ESA WorldCover');
-  var ESA_legend = addLegend('ESA_WC', palette_ESA, className_ESA)
+  var ESA_legend = addLegend('ESA_WC', palette_ESA, className_ESA,false)
   mapObj.add(ESA_legend)
-  mapObj.addLayer(dwRgb_Tile, {}, 'Dynamic World'+target_year);
+  mapObj.addLayer(dwRgb_Tile, {}, 'Dynamic World'+app.data.target_year,false);
   var DW_legend = addLegend('DW',palette_DW, className_DW)
   mapObj.add(DW_legend)
-  
-  var prop_name = vali_feature.propertyNames()
-  var old_feature = vali_feature.select(prop_name)
-  var new_feature = old_feature.set(
-      app.data.property_name1,app.data.primary_label,
-      app.data.property_name3,app.data.confidence,
-      app.data.property_name2,app.data.Import_props
-    )
-  app.data.vali_list = app.data.vali_list.replace(old_feature, new_feature)
-  mapObj.addLayer(final_feature,{},("sample_point" + app.data.vali_index));
+  mapObj.addLayer(final_feature,{},("sample_point" + app.data.vali_index),true);
   
   /*Display image cards to the card panel*/
   var aoiBox = feature.buffer(app.data.chipwidth * 1000/2)
@@ -272,8 +262,7 @@ function auxi_data_disp(){
   var feature = ee.Feature(app.data.vali_list.get(number)).geometry();
   var vali_feature = ee.Feature(app.data.vali_list.get(number));
   //Get Auxiliary  Information
-  var prop_name = vali_feature.propertyNames().remove('system:index').remove('Rlab2020')
-                  .remove('Rconf20').remove('ImportProps')
+  var prop_name = vali_feature.propertyNames().remove('system:index')
   prop_name = prop_name.sort()
   var prop_info = vali_feature.toArray(prop_name)
   prop_info = prop_info.reshape([1,prop_name.length()])
@@ -295,7 +284,12 @@ function data_import(){
   })
   var vali_filepathtxt = ui.Textbox({
     value: app.data.sam_import,
-    onChange: function(value) {app.data.sam_import = value},
+    onChange: function(value) {
+      app.data.sam_import = value
+      var vali_featureCollection = ee.FeatureCollection(ee.String(app.data.sam_import));
+      var size = vali_featureCollection.size();
+      app.data.vali_list = vali_featureCollection.toList(size);
+    },
     style: Textbox_style
   });
   var target_year_label = ui.Label({
@@ -405,7 +399,6 @@ function alter_pro(){
   //import sample data 
   var num = ee.Number.parse(app.data.vali_index);
   var feature = ee.Feature(app.data.vali_list.get(num))
-  var vali_feature = ee.Feature(app.data.vali_list.get(num))
   var prop_name = feature.propertyNames()
   var old_feature = ee.Feature(app.data.vali_list.get(num)).select(prop_name)
   var new_feature = old_feature.set(
@@ -414,18 +407,31 @@ function alter_pro(){
       app.data.property_name2,app.data.Import_props
       )
   app.data.vali_list = app.data.vali_list.replace(old_feature, new_feature)
-  
   //Get All  Information
+  var final_feature = ee.Feature(new_feature)
   down_mid_panel.clear()
-  var prop_name = vali_feature.propertyNames().remove('system:index')
+  var prop_name = final_feature.propertyNames().remove('system:index')
   prop_name = prop_name.sort()
-  var prop_info = vali_feature.toArray(prop_name)
+  var prop_info = final_feature.toArray(prop_name)
   prop_info = prop_info.reshape([1,prop_name.length()])
   var inter_chart = ui.Chart.array.values(prop_info,1,prop_name).setSeriesNames(['MultiLabs']).setChartType('Table')
   down_mid_panel.widgets().set(0,inter_chart)
 }
 
+
+
 /* * Export new dataset added property * */
+function exporttoURL(){
+  downloadURL_panel.clear()
+  downloadURL_panel.widgets().set(0,ui.Label("The download URL:",Label_style))
+  var fc = ee.FeatureCollection(app.data.vali_list);
+  var downloadUrl = fc.getDownloadURL({
+    format: app.data.format_select,
+    filename: app.data.description
+  });
+  downloadURL_panel.widgets().set(1,ui.Label(downloadUrl))
+}
+
 // function exporttodrive(){
 //   //import sample data 
 //   Export.table.toDrive({
@@ -573,13 +579,13 @@ var property_name3 = ui.Textbox({
 var import_pri = ui.Textbox({
   placeholder: 'Primary Label',
   value: app.data.primary_label,
-  onChange: function(value) {app.data.primary_label = value},
+  onChange: function(value) {app.data.primary_label = parseInt(value, 10)},
   style: Textbox_style
 })
 var import_conf = ui.Textbox({
   placeholder: 'Confidence',
   value: app.data.confidence,
-  onChange: function(value){app.data.confidence = value},
+  onChange: function(value){app.data.confidence = parseInt(value, 10)},
   style: Textbox_style
 })
 var property_name2 = ui.Textbox({
@@ -591,7 +597,7 @@ var property_name2 = ui.Textbox({
 var import_WantedProps = ui.Textbox({
   placeholder: 'Wanted Props',
   value: app.data.Import_props,
-  onChange: function(value) {app.data.Import_props = value},
+  onChange: function(value) {app.data.Import_props = parseInt(value, 10)},
   style: Textbox_style
 })
 var alter_probutton = ui.Button({ 
@@ -623,16 +629,7 @@ var FileFormat = ui.Select({
 var saveURL_button = ui.Button({ 
   label: "Get Download URL",
   style: Label_style,
-  onClick: function (){
-    downloadURL_panel.clear()
-    downloadURL_panel.widgets().set(0,ui.Label("The download URL:",Label_style))
-    var fc = ee.FeatureCollection(app.data.vali_list);
-    var downloadUrl = fc.getDownloadURL({
-      format: app.data.format_select,
-      filename: app.data.description
-    });
-    downloadURL_panel.widgets().set(1,ui.Label(downloadUrl))
-  }
+  onClick: exporttoURL
 });
 
 var interpanel = ui.Panel({
