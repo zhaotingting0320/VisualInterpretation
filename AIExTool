@@ -4,10 +4,11 @@
 /* * preparing * */
 var app={
   data:{
-    sam_import: 'users/zhaotingting/Test_Tookit/Single_YearData',
+    sam_import: 'users/zhaotingting/Test_Tookit/Test',
     target_year: '2020',
     description: 'AuxiliarySampleDataSet',
     format_select:'SHP',
+    vali_list: null
   }
 };
 var file_format = ["CSV","GeoJSON", "KML", "KMZ","SHP","TFRecord"]
@@ -15,9 +16,30 @@ var StudyRegion = ee.Geometry.Polygon([[-179.99,-89.99],[179.99,-89.99],[179.99,
 var AuxiExUtils = require('users/zhaotingting/toolkit:Toolkit_JS/AuxiliaryExtract.js')
 
 var mapObj = ui.Map()
+var vali_featureCollection = ee.FeatureCollection(ee.String(app.data.sam_import));
+var size = vali_featureCollection.size();
+app.data.vali_list = vali_featureCollection.toList(size);
 
 var Label_style = {stretch:'horizontal', fontWeight:"bold", fontSize:"12px"}
 var Textbox_style = {stretch:'horizontal', fontWeight:"bold", fontSize:"6px"}
+
+function exporttoURL(){
+  downloadURL_panel.clear()
+  downloadURL_panel.widgets().set(0,ui.Label("The download URL:",{stretch:'horizontal', fontWeight:"bold", fontSize:"14px"}))
+  var vali_featureCollection = ee.FeatureCollection(app.data.vali_list)
+  
+  var new_col = AuxiExUtils.auxiliary_extrct(vali_featureCollection,app.data.target_year)
+  var fc = ee.FeatureCollection(new_col)
+  var feature = fc.first().geometry()
+  mapObj.centerObject(feature,10);   
+  mapObj.addLayer(fc,{},"Samples")
+  
+  var downloadUrl = fc.getDownloadURL({
+    format: app.data.format_select,
+    filename: app.data.description
+  });
+  downloadURL_panel.widgets().set(1,ui.Label(downloadUrl))
+}
 
 var downloadURL_panel = ui.Panel({
   widgets:[ui.Label("The download URL:",Label_style)],
@@ -43,7 +65,13 @@ var vali_file_title = ui.Label({
 })
 var vali_filepathtxt = ui.Textbox({
   value: app.data.sam_import,
-  onChange: function(value) {app.data.sam_import = value},
+  onChange: function(value) {
+    app.data.sam_import = value
+    var vali_featureCollection = ee.FeatureCollection(ee.String(app.data.sam_import));
+    var size = vali_featureCollection.size();
+    app.data.vali_list = vali_featureCollection.toList(size);
+    
+  },
   style: Textbox_style
 });
 var target_year_label = ui.Label({
@@ -52,7 +80,7 @@ var target_year_label = ui.Label({
 })
 var target_yeartxt = ui.Textbox({
   value: app.data.target_year,
-  onChange: function(value) {app.data.target_year = value},
+  onChange: function(value) {app.data.target_year = parseInt(value, 10)},
   style: Textbox_style
 });
 var DownloadLabel = ui.Label({
@@ -75,25 +103,7 @@ var FileFormat = ui.Select({
 var AuxiExButton = ui.Button({ 
   label: "Extrct Auxiliary Infos and Download",
   style: Label_style,
-  onClick: function (){
-    downloadURL_panel.clear()
-    downloadURL_panel.widgets().set(0,ui.Label("The download URL:",{stretch:'horizontal', fontWeight:"bold", fontSize:"14px"}))
-    
-    var vali_featureCollection = ee.FeatureCollection(ee.String(app.data.sam_import))
-    var new_col = AuxiExUtils.auxiliary_extrct(vali_featureCollection,app.data.target_year)
-    var size = new_col.size();
-    app.data.vali_list = new_col.toList(size);
-    var fc = ee.FeatureCollection(app.data.vali_list)
-    var feature = ee.Feature(app.data.vali_list.get(0)).geometry()
-    mapObj.centerObject(feature,10);   
-    mapObj.addLayer(fc,{},"Samples")
-    
-    var downloadUrl = fc.getDownloadURL({
-      format: app.data.format_select,
-      filename: app.data.description
-    });
-    downloadURL_panel.widgets().set(1,ui.Label(downloadUrl))
-  }
+  onClick: exporttoURL
 })
 
 var left_panel = ui.Panel({
