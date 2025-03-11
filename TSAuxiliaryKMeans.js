@@ -119,7 +119,7 @@ exports.TSinfos_extrct = function(samples,Collect_LabPropName,Collect_ConfName,I
       feat = ee.Feature(feat);
       var props1 = ee.String('NewLab').cat(ee.String(ee.Number(iyear).int()))
       var props2 = ee.String('Conf').cat(ee.String(ee.Number(iyear).int()))
-      var cluster_lab = feat.get(ee.String('ClusterLab').cat(ee.String(ee.Number(iyear).int())))
+      var cluster_lab = feat.get(ee.String('CLab').cat(ee.String(ee.Number(iyear).int())))
       var conf_lab = feat.get(Collect_ConfName);
       return feat.set(props1, cluster_lab,props2, conf_lab);
     }, feature);
@@ -215,7 +215,7 @@ function TSlabel(cluster_result, year_str,Collect_LabPropName){
     var isValue = ee.Algorithms.IsEqual(sizes,9999)
     var modeLabel = mode_dict.keys().get(mode_dict.values().indexOf(maxValue)) || '0'
     var MclusterFeatures = clusterFeatures.map(function(feature) { // Add new mode labels for these Features
-      return feature.set(ee.String('ClusterLab').cat(year_str), ee.Number.parse(modeLabel));
+      return feature.set(ee.String('CLab').cat(year_str), ee.Number.parse(modeLabel));
     });
     return MclusterFeatures.toList(MclusterFeatures.size())
   }).flatten(); 
