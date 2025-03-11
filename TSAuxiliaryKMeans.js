@@ -8,9 +8,7 @@ exports.TSinfos_extrct = function(samples,Collect_LabPropName,Collect_ConfName,I
   // * * * Start the main content  * * * //
   var sams_size = samples.size()
   var sams_list = samples.toList(sams_size)
-  var sub_list = sams_list.slice(0,200)
   samples = ee.FeatureCollection(sams_list)
-  print('sample',samples)
 
   var L89_bands = ['SR_B2', 'SR_B3', 'SR_B4','SR_B5','SR_B6','SR_B7', 'QA_PIXEL'];
   var L8_bands = ['B2','B3','B4','B5','B6','B7','pixel_qa'];
@@ -113,20 +111,8 @@ exports.TSinfos_extrct = function(samples,Collect_LabPropName,Collect_ConfName,I
   // Merge Props
   var mergedFC = joinCollections(ee.FeatureCollection(KMeansFC), ee.FeatureCollection(FVC_FC),ID_name);
   mergedFC = joinCollections(mergedFC, AuxilarySams,ID_name)
-  print(mergedFC,'mergedFC')
   
   // * * NewLab and NewConf * * //
-  // var new_samples = mergedFC.map(function(feature){
-  //   for(var iyear = start_year; iyear <= end_year; iyear++){
-  //     var props1 = 'NewLab' + String(iyear)
-  //     var props2 = 'Conf' + String(iyear)
-  //     var cluster_lab = feature.get('ClusterLab' + String(iyear))
-  //     var conf_lab = feature.get(Collect_ConfName)
-  //     feature = feature.set(props1, cluster_lab, props2, conf_lab)
-  //   }
-  //   return feature
-  // })
-  
   var years = ee.List.sequence(start_year, end_year);
   var new_samples = mergedFC.map(function(feature) {
     var updatedFeature = years.iterate(function(iyear, feat) {
@@ -135,16 +121,15 @@ exports.TSinfos_extrct = function(samples,Collect_LabPropName,Collect_ConfName,I
       var props2 = ee.String('Conf').cat(ee.String(ee.Number(iyear).int()))
       var cluster_lab = feat.get(ee.String('ClusterLab').cat(ee.String(ee.Number(iyear).int())))
       var conf_lab = feat.get(Collect_ConfName);
-      return feat.set(props1, cluster_lab).set(props2, conf_lab);
+      return feat.set(props1, cluster_lab,props2, conf_lab);
     }, feature);
   
     return ee.Feature(updatedFeature);
   });
-  
-  return new_samples
   print('ALL',new_samples)
+  return ee.FeatureCollection(new_samples)
+  
 }
-
 
 //* * * * * * * * * * FUNCTION CONSTRUCTION  * * * * * * * * * //
 // * * data preprocessing * * //
