@@ -5,6 +5,7 @@
 var app={
   data:{
     sam_import: 'users/zhaotingting/Test_Tookit/Test',
+    
     target_year: '2020',
     description: 'AuxiliarySampleDataSet',
     format_select:'SHP',
@@ -20,19 +21,44 @@ var vali_featureCollection = ee.FeatureCollection(ee.String(app.data.sam_import)
 var size = vali_featureCollection.size();
 app.data.vali_list = vali_featureCollection.toList(size);
 
-var Label_style = {stretch:'horizontal', fontWeight:"bold", fontSize:"12px"}
-var Textbox_style = {stretch:'horizontal', fontWeight:"bold", fontSize:"6px"}
+var Label_style = {stretch:'horizontal', fontWeight:"bold", fontSize:"14px"}
+var Textbox_style = {stretch:'horizontal', fontWeight:"bold", fontSize:"8px"}
+var select_pros = ['NDVI','NDWI','NDBI','FVC','Elevation','Slope','Height2005','Height2019']
+var checkboxDict = {}
+
+var loadPropsName_panel = ui.Panel({
+  widgets:[ui.Label("Property Names of Samples:",Label_style)],
+  layout: ui.Panel.Layout.flow('vertical', true),
+  style: {position: 'bottom-right'}
+})
 
 function exporttoURL(){
   downloadURL_panel.clear()
   downloadURL_panel.widgets().set(0,ui.Label("The download URL:",{stretch:'horizontal', fontWeight:"bold", fontSize:"14px"}))
+  loadPropsName_panel.clear()
+  loadPropsName_panel.widgets().set(0,ui.Label("Property Names of Samples:",{stretch:'horizontal', fontWeight:"bold", fontSize:"14px"}))
+  mapObj.clear()
   var vali_featureCollection = ee.FeatureCollection(app.data.vali_list)
   
-  var new_col = AuxiExUtils.auxiliary_extrct(vali_featureCollection,app.data.target_year)
+  var new_col = AuxiExUtils.auxiliary_extrct(checkboxDict,vali_featureCollection,app.data.target_year)
+  
   var fc = ee.FeatureCollection(new_col)
   var feature = fc.first().geometry()
-  mapObj.centerObject(feature,10);   
+  print(fc)
+  var fea_props = fc.first().propertyNames()
+  var propsList = fea_props.getInfo();
+  var propsPanel = ui.Panel({
+    widgets: propsList.map(function(prop) {
+      return ui.Label(prop);
+    }),
+    layout: ui.Panel.Layout.flow('vertical')
+  });
+  
+  loadPropsName_panel.widgets().set(1, propsPanel);
+  
+  mapObj.centerObject(feature,10);
   mapObj.addLayer(fc,{},"Samples")
+  mapObj.add(loadPropsName_panel);
   
   var downloadUrl = fc.getDownloadURL({
     format: app.data.format_select,
@@ -74,6 +100,15 @@ var vali_filepathtxt = ui.Textbox({
   },
   style: Textbox_style
 });
+
+var checklab = ui.Label('Please select auxiliary information:',{fontWeight:"bold", fontSize:"14px"})
+var check_panel = ui.Panel({widgets:[checklab],layout:ui.Panel.Layout.flow('horizontal',true)});
+select_pros.forEach(function(prop) {
+  var checkbox = ui.Checkbox(prop, false);
+  checkboxDict[prop] = checkbox;
+  check_panel.add(checkbox);
+})
+
 var target_year_label = ui.Label({
   value:"Target Year",
   style: Label_style
@@ -108,7 +143,7 @@ var AuxiExButton = ui.Button({
 
 var left_panel = ui.Panel({
   widgets:[import_txt,ToolInstructions, tool_manual, ui.Panel({widgets:[vali_file_title,vali_filepathtxt], layout:ui.Panel.Layout.flow('horizontal')}),
-    ui.Panel({widgets:[target_year_label,target_yeartxt], layout:ui.Panel.Layout.flow('horizontal')}),
+    check_panel,ui.Panel({widgets:[target_year_label,target_yeartxt], layout:ui.Panel.Layout.flow('horizontal')}),
     ui.Panel({widgets:[DownloadLabel,Description], layout:ui.Panel.Layout.flow('horizontal')}),
     ui.Panel({widgets:[FileFormatLabel,FileFormat], layout:ui.Panel.Layout.flow('horizontal')}),
     AuxiExButton,downloadURL_panel],
