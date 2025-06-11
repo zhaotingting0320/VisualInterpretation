@@ -9,6 +9,10 @@ var app={
     vali_index:'0',
     bufferDistance: 5,
     
+    selectb1:'RED',
+    selectb2:'GREEN',
+    selectb3:'BLUE',
+    
     index_year: 2020,
     slide_window: 10,
     step_year: 2,
@@ -51,7 +55,7 @@ var file_format = ["CSV","GeoJSON", "KML", "KMZ","SHP","TFRecord"]
 var ccdParams = {breakpointBands:BPBANDS, tmaskBands:TMBANDS, dateFormat:1,lambda:0.002, maxIterations:10000};
 var runParams = {sDate:'1984-01-01', eDate:'2024-01-01', bandSelect:'SWIR1', nSegs:6};
 var vizParams = {red:'SWIR1', green:'NIR', blue:'RED', redMin:0, redMax:0.6, greenMin:0, greenMax:0.6, blueMin:0, blueMax:0.6};
-
+var Vis_select = ['BLUE','GREEN','RED','NIR','SWIR1','SWIR2']
 // params panel
 var runParams_new = [
   {label: 'Max Segments:', value: 6},
@@ -190,6 +194,7 @@ function data_import(){
     style: Textbox_style
     
   });
+  
   var start_year_label = ui.Label({value:"Start Year",style: Label_style})
   var start_yeartxt = ui.Textbox({value: app.data.select_start_year,onChange: function(value) { app.data.select_start_year = parseInt(value, 10)},style: Textbox_style});
   var end_year_label = ui.Label({value:"End Year",style: Label_style})
@@ -199,6 +204,10 @@ function data_import(){
   var vali_title = ui.Label({ value: "Sample ID", style: Label_style });
   var validationtxt = ui.Textbox({value: app.data.vali_index,onChange: function (value){ app.data.vali_index = value },style: Textbox_style});
   var BufferDis_label = ui.Label({value:"Buffer Distance of Sample",style: Label_style})
+  var show_select_txt = ui.Label({value: "Synthetic band", style: Label_style})    
+  var show_selectb1 = ui.Select({items: Vis_select, value: app.data.selectb1,onChange: function(value) {app.data.selectb1 = value},style: Textbox_style})
+  var show_selectb2 = ui.Select({items: Vis_select, value: app.data.selectb2,onChange: function(value) {app.data.selectb2 = value},style: Textbox_style})
+  var show_selectb3 = ui.Select({items: Vis_select, value: app.data.selectb3,onChange: function(value) {app.data.selectb3 = value},style: Textbox_style})
   var BufferDistxt = ui.Textbox({value: app.data.bufferDistance,onChange: function(value) {app.data.bufferDistance = parseFloat(value, 10)},style: Textbox_style});
   var disp_AuxSam_button = ui.Button({ label: "Show Sample, Infos, and LandTrendr chart", onClick: auxi_sam_disp, style: Label_style })
   
@@ -213,7 +222,9 @@ function data_import(){
       widgets: [vali_title, validationtxt], layout:ui.Panel.Layout.flow('horizontal')
     }), ui.Panel({
       widgets:[BufferDis_label, BufferDistxt], layout:ui.Panel.Layout.flow('horizontal')
-    }), disp_AuxSam_button ],
+    }), ui.Panel({
+        widgets:[show_select_txt, show_selectb1, show_selectb2, show_selectb3], layout:ui.Panel.Layout.flow('horizontal')
+      }), disp_AuxSam_button, GE_button],
     layout:ui.Panel.Layout.flow('vertical')
   })
   return import_data_panel
@@ -243,6 +254,40 @@ function alter_pro(){
   var intered_chart = ui.Chart.array.values(intered_info,1,intered_names).setSeriesNames(['MultiLabs']).setChartType('Table')
   down_right_auxi_panel.widgets().set(0,intered_chart)
 }
+
+//Jump Google Earth Web
+var GE_button = ui.Button({
+  label:'Open in Google Earth/Bing Map',
+  style: {stretch:'horizontal', fontWeight:"bold", fontSize:"12px"},
+  onClick: function() {
+    // 获取部件数量
+    var widgets = import_data_panel.widgets()
+    var count = widgets.length()
+    // 如果Panel不为空，移除最后一个部件
+    if (count > 10) {
+      import_data_panel.remove(widgets.get(count - 1)); // 从Panel中移除最后一个部件
+      import_data_panel.remove(widgets.get(count - 2))
+    }
+    
+    var number = ee.Number.parse(app.data.vali_index);
+    var feature = ee.Feature(app.data.vali_list.get(number)).geometry();
+    var coordinates = feature.coordinates().getInfo()
+    var lat = coordinates[1];  // 纬度
+    var lon = coordinates[0]; // 经度
+    var GE_url = 'https://earth.google.com/web/@' + lat + ',' + lon + ',100000a,0d,0y,0h,0t,0r';
+    print('Google Earth url',GE_url)
+    var link_GE = ui.Label('Click Jump to Google Earth', {fontWeight: 'bold', color: 'blue', fontSize:"12px"})
+    link_GE.setUrl(GE_url)
+
+    var Bing_url = 'https://www.bing.com/maps?cp='+lat+'~'+lon+'&lvl=15&style=h'; // 纬度~经度
+    var link_Bing = ui.Label('Click Jump to Bing Maps', {fontWeight: 'bold', color: 'blue', fontSize:"12px"})
+    link_Bing.setUrl(Bing_url)
+    print('Bing Maps url',Bing_url)
+    
+    import_data_panel.add(link_GE)
+    import_data_panel.add(link_Bing)
+  }
+})
 
 /* * * Export new dataset added property * * */
 var downloadURL_panel = ui.Panel({
@@ -349,14 +394,15 @@ var getParams = function(){
   };
 };
 var LandTrendrPanel = ui.Panel({
-  widgets:[Landtrendr_txt,param_Panel], 
+  widgets:[Landtrendr_txt, param_Panel], 
   style:{stretch: 'vertical'},
   layout:ui.Panel.Layout.flow('vertical')
 })
 // Load imaged clicked in time series chart
 function show_images(year, aoi){
   var dummyCollection = ee.ImageCollection([ee.Image([0,0,0,0,0,0]).mask(ee.Image(0))])
-  var selectedImage = ltgee.buildMosaic(year, aoi, dummyCollection).select(['B3', 'B2', 'B1'])
+  
+  var selectedImage = ltgee.buildMosaic(year, aoi, dummyCollection).select(['B1','B2','B3', 'B4', 'B5', 'B7'],['BLUE','GREEN','RED','NIR','SWIR1','SWIR2'])
   var numLayers = mapObj.layers().length()
   var clicklayer_name = mapObj.layers().get(numLayers -1).getName()
   if(clicklayer_name == 'clicked'){
@@ -364,7 +410,7 @@ function show_images(year, aoi){
   }else{
     var insertIndex = numLayers - 1
   }
-  mapObj.layers().insert(insertIndex, ui.Map.Layer(ee.Image(selectedImage), {bands: ['B3', 'B2', 'B1'], min: 0, max: 3000}, String(year)))
+  mapObj.layers().insert(insertIndex, ui.Map.Layer(ee.Image(selectedImage), {bands: [app.data.selectb1,app.data.selectb2,app.data.selectb3], min: 0, max: 3000}, String(year)))
 }
 // function to draw plots of source and fitted time series to panel
 function plotTimeSeries(){  
