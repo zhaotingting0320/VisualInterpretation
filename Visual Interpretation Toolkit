@@ -1,18 +1,18 @@
 //* * * main layer * * //
 
 var mapObj = ui.Map()
-var link_1 = link_ref('Open AIExTool')
-link_1.setUrl('https://zhaotingting.users.earthengine.app/view/aiextool')
+var link_1 = link_ref('Open AIExT tool')
+link_1.setUrl('https://zhaotingting.users.earthengine.app/view/aiext')
 var link_2 = link_ref('Open SSD_VIT tool');
 link_2.setUrl('https://zhaotingting.users.earthengine.app/view/ssdvit')
-var link_3 = link_ref('Open TimeIExTool');
-link_3.setUrl('https://zhaotingting.users.earthengine.app/view/timeiextool')
+var link_3 = link_ref('Open TimeIExT tool');
+link_3.setUrl('https://zhaotingting.users.earthengine.app/view/timeiext')
 var link_4 = link_ref('Open TSD_VIT tool');
 link_4.setUrl('https://zhaotingting.users.earthengine.app/view/tsdvit')
 
-var descript1 = descript_lab('Auxiliary Information Extraction Tool (AIExTool): Extract multi-source auxiliary data to assist visual interpretation')
+var descript1 = descript_lab('Auxiliary Information Extraction Tool (AIExT): Extract multi-source auxiliary data to assist visual interpretation')
 var descript2 = descript_lab('Single-year Sample Dataset Visual Interpretation Tool (SSD_VIT): Collect single-year land cover labels')
-var descript3 = descript_lab('Time-series Information Extraction Tool (TimeIExTool): Assign initial time-series land cover labels to each sample')
+var descript3 = descript_lab('Time-series Information Extraction Tool (TimeIExT): Assign initial time-series land cover labels to each sample')
 var descript4 = descript_lab('Time-series Sample Dataset Visual Interpretation Tool (TSD_VIT): Determine time-series land cover information')
 
 var link_label1 = clik_label('Click and open the link of AIExTool')
