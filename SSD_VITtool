@@ -43,19 +43,7 @@ function applyScaleFactors(image) {// Applies scaling factors LC5-9.
   var opticalBands = (image.select('SR_B.').multiply(0.0000275).add(-0.2)).multiply(10000)
   return image.addBands(opticalBands, null, true)
 }
-// var Landsat_CloudShadowMask = function(image)
-// {
-//   var cloudShadowBitMask = 1 << 3;
-//   var cloudProbBitMask = 1<<7;
-//   var snowBitMask = 1<<4;
-//   var cloudsBitMask = 1 << 5;
-//   var qa = image.select('pixel_qa');
-//   var mask = qa.bitwiseAnd(cloudShadowBitMask).eq(0).and(qa.bitwiseAnd(cloudsBitMask).eq(0))
-//               .and(qa.bitwiseAnd(cloudProbBitMask).eq(0)).and(qa.bitwiseAnd(snowBitMask).eq(0))
-//   var mask2 = image.reduce(ee.Reducer.min()).gt(0).and(image.reduce(ee.Reducer.max()).lt(10000));
-//   var mask3 = image.select('B2').subtract(image.select('B4').multiply(0.5)).lte(1200);
-//   return image.updateMask(mask).updateMask(mask2).updateMask(mask3);//
-// }
+
 var L89_bands = ['SR_B2', 'SR_B3', 'SR_B4','SR_B5','SR_B6','SR_B7', 'QA_PIXEL'];
 var L8_bands = ['B2','B3','B4','B5','B6','B7','pixel_qa'];
 var L57_bands = ['SR_B1', 'SR_B2', 'SR_B3','SR_B4','SR_B5','SR_B7', 'QA_PIXEL'];
@@ -179,11 +167,15 @@ function disp_samImg(){
   var ESA_WC_Tile = ESA_WC.clip(region_clip)
   var dwRgb_Tile = dwRgb.clip(region_clip)
   mapObj.addLayer(ESA_WC_Tile, ESA_visualization, 'ESA WorldCover');
+  
   var ESA_legend = addLegend('ESA_WC', palette_ESA, className_ESA,false)
   mapObj.add(ESA_legend)
+  
   mapObj.addLayer(dwRgb_Tile, {}, 'Dynamic World'+app.data.target_year,false);
+  
   var DW_legend = addLegend('DW',palette_DW, className_DW)
   mapObj.add(DW_legend)
+  
   mapObj.addLayer(final_feature,{},("sample_point" + app.data.vali_index),true);
   
   /*Display image cards to the card panel*/
@@ -197,6 +189,40 @@ function disp_samImg(){
                   .map(maskS2clouds); 
   displayBrowseImg(LDTS_filters, sentinel_dataset, aoiBox, final_feature)
 }
+
+//Jump Google Earth Web
+var GE_button = ui.Button({
+  label:'Open in Google Earth/Bing Map',
+  style: {stretch:'horizontal', fontWeight:"bold", fontSize:"12px"},
+  onClick: function() {
+    // 获取部件数量
+    var widgets = import_data_panel.widgets()
+    var count = widgets.length()
+    // 如果Panel不为空，移除最后一个部件
+    if (count > 12) {
+      import_data_panel.remove(widgets.get(count - 1)); // 从Panel中移除最后一个部件
+      import_data_panel.remove(widgets.get(count - 2))
+    }
+    
+    var number = ee.Number.parse(app.data.vali_index);
+    var feature = ee.Feature(app.data.vali_list.get(number)).geometry();
+    var coordinates = feature.coordinates().getInfo()
+    var lat = coordinates[1];  // 纬度
+    var lon = coordinates[0]; // 经度
+    var GE_url = 'https://earth.google.com/web/@' + lat + ',' + lon + ',100000a,0d,0y,0h,0t,0r';
+    print('Google Earth url',GE_url)
+    var link_GE = ui.Label('Click Jump to Google Earth', {fontWeight: 'bold', color: 'blue', fontSize:"12px"})
+    link_GE.setUrl(GE_url)
+
+    var Bing_url = 'https://www.bing.com/maps?cp='+lat+'~'+lon+'&lvl=15&style=h'; // 纬度~经度
+    var link_Bing = ui.Label('Click Jump to Bing Maps', {fontWeight: 'bold', color: 'blue', fontSize:"12px"})
+    link_Bing.setUrl(Bing_url)
+    print('Bing Maps url',Bing_url)
+    
+    import_data_panel.add(link_GE)
+    import_data_panel.add(link_Bing)
+  }
+})
 
 var visualization = {min: 0.0,max: 0.3,bands: ['B4', 'B3', 'B2']}
 function displayBrowseImg(col, sentinel_dataset, aoiBox, aoiCircle){
@@ -229,7 +255,7 @@ function displayBrowseImg(col, sentinel_dataset, aoiBox, aoiCircle){
         params: {region:aoiBox, dimensions:'200', crs:'EPSG:3857', format:'PNG'}
       });
       var imgCard = ui.Panel([
-          ui.Label('Month-' + date, {margin:'4px 4px -6px 8px', fontSize:'13px', fontWeight:'bold'}),
+          ui.Label(date + '/' + app.data.target_year, {margin:'4px 4px -6px 8px', fontSize:'13px', fontWeight:'bold'}),
           thumbnail
         ], null, {margin:'4px 0px 0px 4px' , width:'px'});
       right_panel.add(imgCard);
@@ -373,6 +399,7 @@ function data_import(){
     onClick: auxi_data_disp,
     style: Label_style
   })
+  
   var import_data_panel = ui.Panel({
     widgets:[import_txt, ui.Panel({
         widgets:[vali_file_title, vali_filepathtxt], layout:ui.Panel.Layout.flow('horizontal')
@@ -388,7 +415,7 @@ function data_import(){
         widgets:[show_select_txt, show_selectb1, show_selectb2, show_selectb3], layout:ui.Panel.Layout.flow('horizontal')
       }),ui.Panel({
         widgets:[regionWidthLabel, regionWidthSlider], layout:ui.Panel.Layout.flow('horizontal')
-      }), dispimg_button, disp_auxiliary_button],
+      }), dispimg_button, disp_auxiliary_button,GE_button],
     layout:ui.Panel.Layout.flow('vertical')
   })
   return import_data_panel
@@ -417,8 +444,6 @@ function alter_pro(){
   var inter_chart = ui.Chart.array.values(prop_info,1,prop_name).setSeriesNames(['MultiLabs']).setChartType('Table')
   down_mid_panel.widgets().set(0,inter_chart)
 }
-
-
 
 /* * Export new dataset added property * */
 function exporttoURL(){
