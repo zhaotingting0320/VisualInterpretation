@@ -3,7 +3,7 @@
 * * * */
 
 // * * data preprocessing * * //
-exports.auxiliary_extrct = function (samples,target_year){
+exports.auxiliary_extrct = function (checkboxDict,samples,target_year){
   
   var StudyRegion = ee.Geometry.Polygon([[-179.99,-89.99],[179.99,-89.99],[179.99,89.99],[-179.99,89.99]])
   target_year = ee.Number.parse(target_year)
@@ -29,24 +29,42 @@ exports.auxiliary_extrct = function (samples,target_year){
   var NDVI = LT_VIs.select('NDVI')
   var FVC = ee.Image(calFVC(NDVI,StudyRegion,30))
   // * * DEM * * //
-  var dem_dataset = ee.Image('USGS/SRTMGL1_003')
-  var elevation = dem_dataset.select('elevation').rename('elevation');
-  var slope = ee.Terrain.slope(elevation).rename('slope');
+  var dem_dataset = ee.ImageCollection('JAXA/ALOS/AW3D30/V3_2');
+  var elevation = dem_dataset.select('DSM').mosaic().rename('elevation');
+  var proj = dem_dataset.first().select(0).projection();
+  var slope = ee.Terrain.slope(elevation.setDefaultProjection(proj)).rename('slope')
   // * * Tree height * * //
   var Height_dataset2005 = ee.Image('NASA/JPL/global_forest_canopy_height_2005'); // Global Forest Canopy Height, 2005 
   var forestCanopyHeight2005 = Height_dataset2005.select('1').rename('Height2005');
   
-  var forestCanopyHeight2019 = ee.ImageCollection('users/potapovpeter/GEDI_V25_Boreal')
+  var forestCanopyHeight2019 = ee.ImageCollection('users/potapovpeter/GEDI_V27')
             .merge(ee.ImageCollection('users/potapovpeter/GEDI_V27')).mosaic().rename('Height2019')// Global Forest Canopy Height, 2019
   
-  samples = addinitialsams(samples,VIs.select('NDVI'),'NDVI')
-  samples = addinitialsams(samples,VIs.select('NDWI'),'NDWI')
-  samples = addinitialsams(samples,VIs.select('NDBI'),'NDBI')
-  samples = addinitialsams(samples,FVC,'FVC')
-  samples = addinitialsams(samples,elevation,'elevation')
-  samples = addinitialsams(samples,slope,'slope')
-  samples = addinitialsams(samples,forestCanopyHeight2005,'Height2005')
-  samples = addinitialsams(samples,forestCanopyHeight2019,'Height2019')
+  if (checkboxDict['NDVI'].getValue()){
+    samples = addinitialsams(samples,VIs.select('NDVI'),'NDVI')
+  }
+  if (checkboxDict['NDWI'].getValue()){
+    samples = addinitialsams(samples,VIs.select('NDWI'),'NDWI')
+  }
+  if (checkboxDict['NDBI'].getValue()){
+    samples = addinitialsams(samples,VIs.select('NDBI'),'NDBI')
+  }
+  if (checkboxDict['FVC'].getValue()){
+    samples = addinitialsams(samples,FVC,'FVC')
+  }
+  if (checkboxDict['Elevation'].getValue()){
+    samples = addinitialsams(samples,elevation,'elevation')
+  }
+  if (checkboxDict['Slope'].getValue()){
+    samples = addinitialsams(samples,slope,'slope')
+  }
+  if (checkboxDict['Height2005'].getValue()){
+    samples = addinitialsams(samples,forestCanopyHeight2005,'Height2005')
+  }
+  if (checkboxDict['Height2019'].getValue()){
+    samples = addinitialsams(samples,forestCanopyHeight2019,'Height2019')
+  }
+  
   var samscol_final = ee.FeatureCollection(samples)
   return samscol_final
 }
