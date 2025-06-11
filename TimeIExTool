@@ -30,9 +30,18 @@ app.data.vali_list = vali_featureCollection.toList(size);
 var Label_style = {stretch:'horizontal', fontWeight:"bold", fontSize:"12px"}
 var Textbox_style = {stretch:'horizontal', fontWeight:"bold", fontSize:"6px"}
 
+var loadPropsName_panel = ui.Panel({
+  widgets:[ui.Label("Property Names of Samples:",Label_style)],
+  layout: ui.Panel.Layout.flow('vertical', true),
+  style: {position: 'bottom-right'}
+})
+
 function exporttoURL(){
   downloadURL_panel.clear()
   downloadURL_panel.widgets().set(0,ui.Label("The download URL:",{stretch:'horizontal', fontWeight:"bold", fontSize:"14px"}))
+  loadPropsName_panel.clear()
+  loadPropsName_panel.widgets().set(0,ui.Label("Property Names of Samples:",{stretch:'horizontal', fontWeight:"bold", fontSize:"14px"}))
+  mapObj.clear()
   
   var vali_featureCollection = ee.FeatureCollection(app.data.vali_list)
   //KMeans clustering and information extraction
@@ -42,8 +51,30 @@ function exporttoURL(){
   
   var fc = ee.FeatureCollection(new_col)
   var feature = fc.first().geometry()
+  
+  var fea_props = vali_featureCollection.first().propertyNames().remove('system:index')
+  print(fea_props,'fea_props')
+  var propsList = fea_props.getInfo();
+  var propsPanel = ui.Panel({
+    widgets: propsList.map(function(prop) {
+      return ui.Label(prop);
+    }),
+    layout: ui.Panel.Layout.flow('vertical')
+  });
+  propsPanel.add(ui.Label('slope'))
+  propsPanel.add(ui.Label('elevation'))
+  propsPanel.add(ui.Label('Height2005'))
+  propsPanel.add(ui.Label('Height2019'))
+  propsPanel.add(ui.Label('NewLab' + app.data.start_year + "~" + 'NewLab' + app.data.end_year))
+  propsPanel.add(ui.Label('Conf' + app.data.start_year + "~" + 'Conf' + app.data.end_year))
+  propsPanel.add(ui.Label('CLab' + app.data.start_year + "~" + 'CLab' + app.data.end_year))
+  propsPanel.add(ui.Label('FVC' + app.data.start_year + "~" + 'FVC' + app.data.end_year))
+  
+  loadPropsName_panel.widgets().set(1, propsPanel);
+  
   mapObj.centerObject(feature,10);   
   mapObj.addLayer(fc,{},"Samples")
+  mapObj.add(loadPropsName_panel);
   
   var downloadUrl = fc.getDownloadURL({
     format: app.data.format_select,
